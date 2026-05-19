@@ -436,8 +436,9 @@
                 const valorAtual = lanc ? lanc.valor : '';
                 const row = document.createElement('div');
                 row.className = 'lancar-row';
-                row.style.cssText = `--team-c: var(--team-c); ${corStyle(eq)}`;
-                row.classList.add(...(corClass(eq) ? [corClass(eq)] : []));
+                const cls = corClass(eq);
+                if (cls) row.classList.add(cls);
+                if (corStyle(eq)) row.setAttribute('style', corStyle(eq));
 
                 let inputsHtml = '';
                 if (prova.tipo === 'principal' && prova.criterios) {
@@ -462,8 +463,10 @@
 
                 row.innerHTML = `
                     <div class="lancar-equipe">
-                        <span class="cor-bar"></span>
-                        <strong>${eq.nome}</strong>
+                        <div class="lancar-nome-linha">
+                            <span class="cor-dot"></span>
+                            <strong>${eq.nome}</strong>
+                        </div>
                         <small>atual: ${lanc ? lanc.valor : '—'} / ${prova.max_pontos}</small>
                     </div>
                     <div class="lancar-inputs">${inputsHtml}</div>
