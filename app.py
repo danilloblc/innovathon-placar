@@ -36,13 +36,22 @@ ADMIN_PASSWORD = os.environ.get("PLACAR_ADMIN_PASSWORD", "innovathon2026")
 APP_VERSION = str(int(time.time()))
 
 # ====== Estado ======
+DEFAULT_ANIMACAO = {"count_ms": 500, "reorder_ms": 650, "flash_ms": 1200}
+
+
 def _carregar():
     if DATA_FILE.exists():
         try:
-            return json.loads(DATA_FILE.read_text(encoding="utf-8"))
+            d = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+            d.setdefault("equipes", [])
+            d.setdefault("animacao", DEFAULT_ANIMACAO.copy())
+            # merge defaults para chaves novas
+            for k, v in DEFAULT_ANIMACAO.items():
+                d["animacao"].setdefault(k, v)
+            return d
         except json.JSONDecodeError:
             pass
-    return {"equipes": []}  # [{id, nome, pontos, cor_idx}]
+    return {"equipes": [], "animacao": DEFAULT_ANIMACAO.copy()}
 
 def _salvar(estado):
     DATA_FILE.write_text(json.dumps(estado, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -205,6 +214,24 @@ async def reset(password: str = Form(...)):
     _salvar(state)
     await broadcast("equipes", state)
     return {"ok": True}
+
+
+@app.post("/admin/animacao")
+async def set_animacao(
+    password: str = Form(...),
+    count_ms: int = Form(...),
+    reorder_ms: int = Form(...),
+    flash_ms: int = Form(...),
+):
+    _check_auth(password)
+    state["animacao"] = {
+        "count_ms": max(50, min(5000, count_ms)),
+        "reorder_ms": max(100, min(5000, reorder_ms)),
+        "flash_ms": max(100, min(5000, flash_ms)),
+    }
+    _salvar(state)
+    await broadcast("animacao", state["animacao"])
+    return {"ok": True, "animacao": state["animacao"]}
 
 
 @app.get("/stream")

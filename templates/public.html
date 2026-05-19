@@ -48,6 +48,7 @@
         const connText = document.getElementById('connection-text');
 
         let equipes = [];
+        let anim = { count_ms: 500, reorder_ms: 650, flash_ms: 1200 };
 
         // Animacao de contagem dos pontos (count-up/down suave)
         function animatePoints(el, to, durationMs = 600) {
@@ -103,7 +104,7 @@
                 row.querySelector('.pos').textContent = idx + 1;
                 row.querySelector('.team-name').textContent = eq.nome;
                 // pontos: animacao count-up
-                animatePoints(row.querySelector('.points-val'), eq.pontos, 500);
+                animatePoints(row.querySelector('.points-val'), eq.pontos, anim.count_ms);
                 newOrder.push(row);
             });
 
@@ -126,26 +127,28 @@
                 row.style.transition = 'none';
                 row.style.transform = `translateY(${dy}px)`;
                 row.getBoundingClientRect();  // force reflow
-                row.style.transition = 'transform 0.65s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s ease';
+                row.style.transition = `transform ${anim.reorder_ms}ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s ease`;
                 row.style.transform = '';
                 row.classList.add('moving');
                 setTimeout(() => {
                     row.classList.remove('moving');
                     row.style.transition = '';
-                }, 700);
+                }, anim.reorder_ms + 50);
             });
         }
 
         function applySnapshot(s) {
             equipes = s.equipes || [];
+            if (s.animacao) anim = Object.assign(anim, s.animacao);
             render();
         }
 
         function flashRow(id) {
             const row = ranking.querySelector(`.team-row[data-id="${id}"]`);
             if (row) {
+                row.style.setProperty('--flash-dur', `${anim.flash_ms}ms`);
                 row.classList.add('flash');
-                setTimeout(() => row.classList.remove('flash'), 1200);
+                setTimeout(() => row.classList.remove('flash'), anim.flash_ms);
             }
         }
 
@@ -171,6 +174,9 @@
                     render();
                     flashRow(d.id);
                 }
+            });
+            es.addEventListener('animacao', e => {
+                anim = Object.assign(anim, JSON.parse(e.data));
             });
         }
 

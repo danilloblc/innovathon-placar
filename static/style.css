@@ -70,7 +70,7 @@ header .subtitle { margin: 6px 0 0; color: var(--fg-dim); font-size: 14px; lette
     box-shadow: 0 0 30px var(--team-glow);
 }
 .team-row.flash {
-    animation: flash-pulse 1.2s ease;
+    animation: flash-pulse var(--flash-dur, 1.2s) ease;
 }
 @keyframes flash-pulse {
     0% { background: var(--bg-card); }
