@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dados runtime (cada deploy gera os seus)
+data/equipes.json
+data/*.json
+!data/.gitkeep
+
+# Env
+.env
+.env.local

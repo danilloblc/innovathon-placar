@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Placar Innovathon 2026</title>
+    <link rel="stylesheet" href="/static/style.css?v={{ range(100000)|random }}">
+</head>
+<body class="admin">
+    <header>
+        <h1>Painel Admin - Placar</h1>
+        <p class="subtitle">Innovathon 2026</p>
+    </header>
+
+    <main class="admin-main">
+        <section class="card">
+            <h2>Senha</h2>
+            <input type="password" id="pwd" placeholder="Senha admin" autocomplete="current-password">
+            <p class="hint">Salva por sessao do navegador.</p>
+        </section>
+
+        <section class="card">
+            <h2>Adicionar equipe</h2>
+            <form id="form-nova">
+                <div class="row">
+                    <input type="text" id="nova-nome" placeholder="Nome da equipe" required>
+                    <button type="submit" class="btn primary">+ Criar</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2>Equipes</h2>
+            <div id="lista"></div>
+            <div class="actions">
+                <button id="btn-reset" class="btn ghost">Zerar pontuacoes</button>
+                <a href="/" target="_blank" class="btn ghost">Abrir placar publico</a>
+            </div>
+        </section>
+
+        <div id="msg" class="msg"></div>
+    </main>
+
+    <script>
+        const MY_VERSION = "{{ app_version }}";
+        setInterval(async () => {
+            try {
+                const r = await fetch('/version', { cache: 'no-store' });
+                const d = await r.json();
+                if (d.version && d.version !== MY_VERSION) location.reload();
+            } catch {}
+        }, 5000);
+
+        const pwd = document.getElementById('pwd');
+        const lista = document.getElementById('lista');
+        const msg = document.getElementById('msg');
+        pwd.value = sessionStorage.getItem('placar_pwd') || '';
+        pwd.addEventListener('change', () => sessionStorage.setItem('placar_pwd', pwd.value));
+
+        function showMsg(t, ok) {
+            msg.textContent = t;
+            msg.className = 'msg ' + (ok ? 'ok' : 'err');
+            setTimeout(() => msg.className = 'msg', 2500);
+        }
+
+        function fd(extra) {
+            const f = new FormData();
+            f.append('password', pwd.value);
+            for (const k in extra) f.append(k, extra[k]);
+            return f;
+        }
+
+        async function post(url, data) {
+            const r = await fetch(url, { method: 'POST', body: fd(data) });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) showMsg('Erro: ' + (d.detail || r.status), false);
+            return r.ok ? d : null;
+        }
+
+        let equipes = [];
+
+        function render() {
+            const ord = [...equipes].sort((a, b) => b.pontos - a.pontos || a.id - b.id);
+            lista.innerHTML = '';
+            if (ord.length === 0) {
+                lista.innerHTML = '<p class="empty">Nenhuma equipe ainda. Crie acima.</p>';
+                return;
+            }
+            ord.forEach(eq => {
+                const row = document.createElement('div');
+                row.className = 'admin-row team-color-' + (eq.cor_idx || 1);
+                row.innerHTML = `
+                    <div class="cor"></div>
+                    <input class="rename" value="${eq.nome.replace(/"/g, '&quot;')}" data-id="${eq.id}">
+                    <div class="pts"><span>${eq.pontos}</span> pts</div>
+                    <div class="botoes">
+                        <button data-id="${eq.id}" data-delta="-10" class="btn small">-10</button>
+                        <button data-id="${eq.id}" data-delta="-1" class="btn small">-1</button>
+                        <button data-id="${eq.id}" data-delta="+1" class="btn small primary">+1</button>
+                        <button data-id="${eq.id}" data-delta="+5" class="btn small primary">+5</button>
+                        <button data-id="${eq.id}" data-delta="+10" class="btn small primary">+10</button>
+                        <button data-id="${eq.id}" data-set="0" class="btn small ghost">zerar</button>
+                        <button data-id="${eq.id}" data-del="1" class="btn small danger">remover</button>
+                    </div>
+                `;
+                lista.appendChild(row);
+            });
+        }
+
+        lista.addEventListener('click', async e => {
+            const id = e.target.dataset.id;
+            if (!id) return;
+            if (e.target.dataset.delta) {
+                const d = await post('/admin/pontos', { id, delta: e.target.dataset.delta });
+                if (d) showMsg('Pontos atualizados.', true);
+            } else if (e.target.dataset.set !== undefined) {
+                const d = await post('/admin/pontos', { id, set_to: e.target.dataset.set });
+                if (d) showMsg('Equipe zerada.', true);
+            } else if (e.target.dataset.del) {
+                if (!confirm('Remover esta equipe?')) return;
+                const d = await post('/admin/equipe/del', { id });
+                if (d) showMsg('Equipe removida.', true);
+            }
+        });
+
+        lista.addEventListener('change', async e => {
+            if (e.target.classList.contains('rename')) {
+                const id = e.target.dataset.id;
+                const nome = e.target.value;
+                const d = await post('/admin/equipe', { id, nome });
+                if (d) showMsg('Nome alterado.', true);
+            }
+        });
+
+        document.getElementById('form-nova').addEventListener('submit', async e => {
+            e.preventDefault();
+            const nome = document.getElementById('nova-nome').value;
+            const d = await post('/admin/equipe', { id: 0, nome });
+            if (d) {
+                showMsg('Equipe criada.', true);
+                document.getElementById('nova-nome').value = '';
+            }
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', async () => {
+            if (!confirm('Zerar pontuacao de TODAS as equipes?')) return;
+            const d = await post('/admin/reset', {});
+            if (d) showMsg('Pontuacoes zeradas.', true);
+        });
+
+        // SSE para refletir mudancas feitas em outras abas/dispositivos
+        const es = new EventSource('/stream');
+        es.addEventListener('snapshot', e => { equipes = JSON.parse(e.data).equipes || []; render(); });
+        es.addEventListener('equipes', e => { equipes = JSON.parse(e.data).equipes || []; render(); });
+        es.addEventListener('pontos', e => {
+            const d = JSON.parse(e.data);
+            const eq = equipes.find(x => x.id === d.id);
+            if (eq) { eq.pontos = d.pontos; render(); }
+        });
+    </script>
+</body>
+</html>

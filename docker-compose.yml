@@ -1,0 +1,11 @@
+services:
+  placar:
+    build: .
+    container_name: innovathon-placar
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PLACAR_ADMIN_PASSWORD=${PLACAR_ADMIN_PASSWORD:-innovathon2026}
+    volumes:
+      - ./data:/app/data

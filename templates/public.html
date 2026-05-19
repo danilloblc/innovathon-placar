@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>II Innovathon Contagil 2026 - Placar</title>
+    <link rel="stylesheet" href="/static/style.css?v={{ range(100000)|random }}">
+</head>
+<body class="public">
+    <header>
+        <h1>II INNOVATHON CONTÁGIL 2026</h1>
+        <p class="subtitle">PLACAR AO VIVO</p>
+    </header>
+
+    <main id="ranking" class="ranking"></main>
+
+    <footer>
+        <span id="connection" class="dot disconnected"></span>
+        <span id="connection-text">Conectando...</span>
+    </footer>
+
+    <template id="row-template">
+        <div class="team-row" data-id="">
+            <div class="pos"></div>
+            <div class="team-info">
+                <div class="team-name"></div>
+            </div>
+            <div class="team-points">
+                <span class="points-val">0</span>
+                <span class="points-label">pts</span>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        const MY_VERSION = "{{ app_version }}";
+        setInterval(async () => {
+            try {
+                const r = await fetch('/version', { cache: 'no-store' });
+                const d = await r.json();
+                if (d.version && d.version !== MY_VERSION) location.reload();
+            } catch {}
+        }, 5000);
+
+        const ranking = document.getElementById('ranking');
+        const rowTpl = document.getElementById('row-template');
+        const conn = document.getElementById('connection');
+        const connText = document.getElementById('connection-text');
+
+        let equipes = [];
+
+        function render() {
+            // Ordena por pontos desc; em empate, ordem de criacao (id)
+            const ordenadas = [...equipes].sort((a, b) => b.pontos - a.pontos || a.id - b.id);
+            ranking.innerHTML = '';
+            if (ordenadas.length === 0) {
+                ranking.innerHTML = '<p class="empty">Aguardando equipes...</p>';
+                return;
+            }
+            ordenadas.forEach((eq, idx) => {
+                const node = rowTpl.content.cloneNode(true);
+                const row = node.querySelector('.team-row');
+                row.dataset.id = eq.id;
+                row.classList.add('team-color-' + ((eq.cor_idx || 1)));
+                if (idx === 0 && eq.pontos > 0) row.classList.add('leader');
+                row.querySelector('.pos').textContent = idx + 1;
+                row.querySelector('.team-name').textContent = eq.nome;
+                row.querySelector('.points-val').textContent = eq.pontos;
+                ranking.appendChild(row);
+            });
+        }
+
+        function applySnapshot(s) {
+            equipes = s.equipes || [];
+            render();
+        }
+
+        function flashRow(id) {
+            const row = ranking.querySelector(`.team-row[data-id="${id}"]`);
+            if (row) {
+                row.classList.add('flash');
+                setTimeout(() => row.classList.remove('flash'), 1200);
+            }
+        }
+
+        function connect() {
+            const es = new EventSource('/stream');
+            es.onopen = () => {
+                conn.classList.remove('disconnected');
+                conn.classList.add('connected');
+                connText.textContent = 'Conectado';
+            };
+            es.onerror = () => {
+                conn.classList.remove('connected');
+                conn.classList.add('disconnected');
+                connText.textContent = 'Reconectando...';
+            };
+            es.addEventListener('snapshot', e => applySnapshot(JSON.parse(e.data)));
+            es.addEventListener('equipes', e => applySnapshot(JSON.parse(e.data)));
+            es.addEventListener('pontos', e => {
+                const d = JSON.parse(e.data);
+                const eq = equipes.find(x => x.id === d.id);
+                if (eq) {
+                    eq.pontos = d.pontos;
+                    render();
+                    flashRow(d.id);
+                }
+            });
+        }
+
+        connect();
+    </script>
+</body>
+</html>
