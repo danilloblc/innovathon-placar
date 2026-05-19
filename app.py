@@ -121,19 +121,47 @@ def _check_auth(password: str):
 
 
 @app.post("/admin/equipe")
-async def criar_renomear(password: str = Form(...), id: int = Form(0), nome: str = Form(...)):
+async def criar_renomear(
+    password: str = Form(...),
+    id: int = Form(0),
+    nome: str = Form(...),
+    cor_idx: int = Form(0),
+):
+    """Cria (id=0) ou atualiza equipe. cor_idx 1-8; 0 = manter/auto."""
     _check_auth(password)
     nome = nome.strip()
     if not nome:
         raise HTTPException(400, "Nome obrigatorio")
+    cor = cor_idx if 1 <= cor_idx <= 8 else 0
     if id == 0:
-        nova = {"id": _next_id(), "nome": nome, "pontos": 0, "cor_idx": _next_cor()}
+        nova = {
+            "id": _next_id(),
+            "nome": nome,
+            "pontos": 0,
+            "cor_idx": cor if cor else _next_cor(),
+        }
         state["equipes"].append(nova)
     else:
         eq = next((e for e in state["equipes"] if e["id"] == id), None)
         if not eq:
             raise HTTPException(404, "Equipe nao encontrada")
         eq["nome"] = nome
+        if cor:
+            eq["cor_idx"] = cor
+    _salvar(state)
+    await broadcast("equipes", state)
+    return {"ok": True}
+
+
+@app.post("/admin/equipe/cor")
+async def alterar_cor(password: str = Form(...), id: int = Form(...), cor_idx: int = Form(...)):
+    _check_auth(password)
+    if not 1 <= cor_idx <= 8:
+        raise HTTPException(400, "cor_idx deve ser 1-8")
+    eq = next((e for e in state["equipes"] if e["id"] == id), None)
+    if not eq:
+        raise HTTPException(404, "Equipe nao encontrada")
+    eq["cor_idx"] = cor_idx
     _salvar(state)
     await broadcast("equipes", state)
     return {"ok": True}

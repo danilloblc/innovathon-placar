@@ -26,6 +26,18 @@
                     <input type="text" id="nova-nome" placeholder="Nome da equipe" required>
                     <button type="submit" class="btn primary">+ Criar</button>
                 </div>
+                <div class="cor-picker" id="nova-cor-picker">
+                    <span class="cor-label">Cor:</span>
+                    <span class="cor-swatch auto" data-cor="0" title="Auto (proxima disponivel)">auto</span>
+                    <span class="cor-swatch team-color-1" data-cor="1" title="Vermelho"></span>
+                    <span class="cor-swatch team-color-2" data-cor="2" title="Azul"></span>
+                    <span class="cor-swatch team-color-3" data-cor="3" title="Verde"></span>
+                    <span class="cor-swatch team-color-4" data-cor="4" title="Laranja"></span>
+                    <span class="cor-swatch team-color-5" data-cor="5" title="Roxo"></span>
+                    <span class="cor-swatch team-color-6" data-cor="6" title="Ciano"></span>
+                    <span class="cor-swatch team-color-7" data-cor="7" title="Rosa"></span>
+                    <span class="cor-swatch team-color-8" data-cor="8" title="Amarelo"></span>
+                </div>
             </form>
         </section>
 
@@ -89,9 +101,14 @@
             ord.forEach(eq => {
                 const row = document.createElement('div');
                 row.className = 'admin-row team-color-' + (eq.cor_idx || 1);
+                let swatches = '';
+                for (let i = 1; i <= 8; i++) {
+                    const sel = i === eq.cor_idx ? ' selected' : '';
+                    swatches += `<span class="cor-swatch team-color-${i}${sel}" data-cor-id="${eq.id}" data-cor="${i}" title="Cor ${i}"></span>`;
+                }
                 row.innerHTML = `
-                    <div class="cor"></div>
                     <input class="rename" value="${eq.nome.replace(/"/g, '&quot;')}" data-id="${eq.id}">
+                    <div class="cores-row">${swatches}</div>
                     <div class="pts"><span>${eq.pontos}</span> pts</div>
                     <div class="botoes">
                         <button data-id="${eq.id}" data-delta="-10" class="btn small">-10</button>
@@ -108,6 +125,15 @@
         }
 
         lista.addEventListener('click', async e => {
+            // Troca de cor de equipe existente
+            if (e.target.dataset.corId) {
+                const d = await post('/admin/equipe/cor', {
+                    id: e.target.dataset.corId,
+                    cor_idx: e.target.dataset.cor,
+                });
+                if (d) showMsg('Cor alterada.', true);
+                return;
+            }
             const id = e.target.dataset.id;
             if (!id) return;
             if (e.target.dataset.delta) {
@@ -123,6 +149,16 @@
             }
         });
 
+        // Seletor de cor para nova equipe
+        let novaCorSelecionada = 0; // 0 = auto
+        const novaCorPicker = document.getElementById('nova-cor-picker');
+        novaCorPicker.addEventListener('click', e => {
+            if (!e.target.classList.contains('cor-swatch')) return;
+            novaCorPicker.querySelectorAll('.cor-swatch').forEach(s => s.classList.remove('selected'));
+            e.target.classList.add('selected');
+            novaCorSelecionada = parseInt(e.target.dataset.cor);
+        });
+
         lista.addEventListener('change', async e => {
             if (e.target.classList.contains('rename')) {
                 const id = e.target.dataset.id;
@@ -135,7 +171,7 @@
         document.getElementById('form-nova').addEventListener('submit', async e => {
             e.preventDefault();
             const nome = document.getElementById('nova-nome').value;
-            const d = await post('/admin/equipe', { id: 0, nome });
+            const d = await post('/admin/equipe', { id: 0, nome, cor_idx: novaCorSelecionada });
             if (d) {
                 showMsg('Equipe criada.', true);
                 document.getElementById('nova-nome').value = '';

@@ -207,16 +207,19 @@ input:focus { outline: none; border-color: var(--accent); }
 
 .admin-row {
     display: grid;
-    grid-template-columns: 8px 1fr 100px auto;
+    grid-template-columns: 1fr auto 100px auto;
     gap: 12px;
     align-items: center;
     background: var(--bg-row);
     border-radius: 8px;
-    padding: 10px;
+    padding: 10px 12px;
     margin-bottom: 8px;
     border-left: 4px solid var(--team-c, var(--border));
 }
-.admin-row .cor { display: none; }
+.admin-row .cores-row {
+    display: flex;
+    gap: 4px;
+}
 .admin-row .rename {
     background: transparent;
     border: 1px solid transparent;
@@ -245,3 +248,58 @@ input:focus { outline: none; border-color: var(--accent); }
 }
 
 .hint { color: var(--fg-dim); font-size: 12px; margin-top: 6px; }
+
+/* ===== COLOR PICKER ===== */
+.cor-picker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+.cor-label {
+    font-size: 12px;
+    color: var(--fg-dim);
+    margin-right: 4px;
+}
+.cor-swatch {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--team-c, #444);
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.15s ease;
+    display: inline-block;
+}
+.cor-swatch:hover { transform: scale(1.15); }
+.cor-swatch.selected {
+    border-color: var(--fg);
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--team-c, var(--accent));
+}
+.cor-swatch.auto {
+    background: transparent;
+    border: 1px dashed var(--fg-dim);
+    width: auto;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 13px;
+    color: var(--fg-dim);
+    font-size: 11px;
+    line-height: 22px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.cor-swatch.auto.selected {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: none;
+}
+
+.admin-row .cores-row .cor-swatch {
+    width: 18px;
+    height: 18px;
+}
+.admin-row .cores-row .cor-swatch.selected {
+    box-shadow: 0 0 0 2px var(--bg-row), 0 0 0 3px var(--fg);
+}
