@@ -178,6 +178,8 @@
         // ===== Senha =====
         const pwd = document.getElementById('pwd');
         pwd.value = sessionStorage.getItem('placar_pwd') || '';
+        // Salva a cada keystroke (mobile pode nao disparar 'change' confiavelmente)
+        pwd.addEventListener('input', () => sessionStorage.setItem('placar_pwd', pwd.value));
         pwd.addEventListener('change', () => sessionStorage.setItem('placar_pwd', pwd.value));
 
         // ===== Helpers =====
@@ -484,31 +486,72 @@
             updatePendentesInfo();
         });
 
+        // Ao clicar Aplicar: le DIRETAMENTE os inputs do DOM (nao depende do evento input,
+        // que pode nao disparar corretamente em alguns teclados mobile)
+        function coletarDoDOM() {
+            const result = {};
+            const prova = provas.find(p => p.id === provaAtivaId);
+            if (!prova) return result;
+            equipes.forEach(eq => {
+                const key = `${eq.id}-${provaAtivaId}`;
+                if (prova.tipo === 'principal' && prova.criterios) {
+                    const inputs = lancarArea.querySelectorAll(`input[data-equipe="${eq.id}"][data-criterio]`);
+                    let temAlgum = false;
+                    const vals = {};
+                    let soma = 0;
+                    inputs.forEach(inp => {
+                        if (inp.value !== '' && inp.value !== null) temAlgum = true;
+                        const v = parseInt(inp.value) || 0;
+                        vals[inp.dataset.criterio] = v;
+                        soma += v;
+                    });
+                    if (temAlgum) result[key] = { valor: soma, criterios_valores: vals };
+                } else {
+                    const inp = lancarArea.querySelector(`input[data-equipe="${eq.id}"]:not([data-criterio])`);
+                    if (inp && inp.value !== '' && inp.value !== null) {
+                        result[key] = { valor: parseInt(inp.value) || 0, criterios_valores: null };
+                    }
+                }
+            });
+            return result;
+        }
+
         document.getElementById('btn-aplicar').addEventListener('click', async () => {
-            // Garante que os inputs tenham flushed seus valores antes (importante em mobile)
+            // Fecha teclado mobile pra forcar flush de qualquer pending input
             document.activeElement && document.activeElement.blur();
-            console.log('[aplicar] pendentes:', JSON.parse(JSON.stringify(pendentes)));
-            console.log('[aplicar] senha preenchida:', !!pwd.value);
-            const keys = Object.keys(pendentes);
+            // Salva senha no caso do change event nao ter disparado
+            if (pwd.value) sessionStorage.setItem('placar_pwd', pwd.value);
+
+            // Le os inputs DIRETO do DOM (mais confiavel que o evento input em mobile)
+            const dadosDom = coletarDoDOM();
+            // Une com pendentes do evento input (caso o usuario tenha apagado alguma)
+            const finalPendentes = { ...pendentes, ...dadosDom };
+
+            console.log('[aplicar] pendentes (memoria):', pendentes);
+            console.log('[aplicar] pendentes (DOM):', dadosDom);
+            console.log('[aplicar] final:', finalPendentes);
+            console.log('[aplicar] senha:', pwd.value ? 'presente' : 'VAZIA');
+
+            const keys = Object.keys(finalPendentes);
             if (keys.length === 0) {
-                showMsg('Nada pendente para aplicar. Digite valores nos inputs antes.', false);
+                showMsg('Nada para aplicar. Digite valores nos inputs antes.', false);
                 return;
             }
             if (!pwd.value) {
-                showMsg('Digite a senha admin no topo da pagina.', false);
+                showMsg('Senha admin nao preenchida (campo no topo).', false);
                 return;
             }
             let ok = 0, err = 0;
             for (const k of keys) {
                 const [eqId, prId] = k.split('-').map(Number);
-                const p = pendentes[k];
+                const p = finalPendentes[k];
                 const data = { equipe_id: eqId, prova_id: prId, valor: p.valor };
                 if (p.criterios_valores) data.criterios_valores_json = JSON.stringify(p.criterios_valores);
                 const r = await post('/admin/lancamento', data);
                 if (r) ok++; else err++;
             }
             pendentes = {};
-            showMsg(`${ok} aplicado(s)${err ? `, ${err} erro(s)` : ''}.`, err === 0);
+            showMsg(`${ok} aplicado(s)${err ? `, ${err} com erro` : ''}.`, err === 0);
             updatePendentesInfo();
         });
 
