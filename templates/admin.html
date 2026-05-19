@@ -13,15 +13,18 @@
     </header>
 
     <main class="admin-main">
-        <section class="card">
-            <h2>Senha</h2>
+        <section class="card" data-card="senha">
+            <h2 class="card-toggle">Senha <span class="toggle-icon">▾</span></h2>
+          <div class="card-body">
             <input type="password" id="pwd" placeholder="Senha admin" autocomplete="current-password">
             <p class="hint">Salva por sessao do navegador.</p>
+          </div>
         </section>
 
         <!-- ===== PROVAS ===== -->
-        <section class="card">
-            <h2>Provas</h2>
+        <section class="card" data-card="provas">
+            <h2 class="card-toggle">Provas <span class="toggle-icon">▾</span></h2>
+          <div class="card-body">
             <p class="hint">Cadastre as provas do evento. Cada equipe tera 1 lancamento por prova (sobrescreve ao re-lancar).</p>
             <div id="lista-provas"></div>
             <form id="form-prova" class="form-inline">
@@ -38,11 +41,13 @@
                 Provas do tipo <strong>Principal</strong> sao criadas com criterios padrao do edital.
                 Edite via botao "editar" depois de criar.
             </p>
+          </div>
         </section>
 
         <!-- ===== LANCAR PONTUACAO ===== -->
-        <section class="card">
-            <h2>Lancar Pontuacao</h2>
+        <section class="card" data-card="lancar">
+            <h2 class="card-toggle">Lancar Pontuacao <span class="toggle-icon">▾</span></h2>
+          <div class="card-body">
             <div class="row" style="gap: 12px; margin-bottom: 12px;">
                 <label style="flex: 1;">
                     <span style="font-size: 12px; color: var(--fg-dim);">Selecione a prova</span>
@@ -55,11 +60,13 @@
                 <button id="btn-cancelar" class="btn ghost">Cancelar pendentes</button>
                 <span id="pendentes-info" class="hint" style="margin-left: auto;"></span>
             </div>
+          </div>
         </section>
 
         <!-- ===== EQUIPES ===== -->
-        <section class="card">
-            <h2>Equipes</h2>
+        <section class="card" data-card="equipes">
+            <h2 class="card-toggle">Equipes <span class="toggle-icon">▾</span></h2>
+          <div class="card-body">
             <form id="form-nova-equipe" class="form-inline">
                 <input type="text" id="nova-nome" placeholder="Nome da equipe" required>
                 <button type="submit" class="btn primary">+ Criar</button>
@@ -69,11 +76,13 @@
                 <button id="btn-reset" class="btn ghost">Zerar todos os lancamentos</button>
                 <a href="/" target="_blank" class="btn ghost">Abrir placar publico</a>
             </div>
+          </div>
         </section>
 
         <!-- ===== TEMPOS DE ANIMACAO ===== -->
-        <section class="card">
-            <h2>Tempos de animacao (ms)</h2>
+        <section class="card" data-card="animacao">
+            <h2 class="card-toggle">Tempos de animacao (ms) <span class="toggle-icon">▾</span></h2>
+          <div class="card-body">
             <p class="hint">Aplica em todos os visualizadores em tempo real.</p>
             <form id="form-animacao">
                 <div class="row" style="gap: 16px; align-items: flex-end;">
@@ -92,6 +101,7 @@
                     <button type="submit" class="btn primary">Salvar</button>
                 </div>
             </form>
+          </div>
         </section>
 
     </main>
@@ -174,6 +184,31 @@
         let provaAtivaId = null;
         let pendentes = {};  // { "equipe_id-prova_id": {valor, criterios_valores} }
         let equipeExpandida = null;  // id da equipe com detalhes abertos
+
+        // ===== Cards colapsaveis =====
+        // Defaults: senha+lancar+equipes abertos, provas+animacao colapsados
+        const CARDS_DEFAULT_COLLAPSED = ['provas', 'animacao'];
+        function aplicarCardStates() {
+            document.querySelectorAll('.card[data-card]').forEach(card => {
+                const key = card.dataset.card;
+                const saved = localStorage.getItem('card_' + key);
+                let collapsed = saved !== null ? saved === '1' : CARDS_DEFAULT_COLLAPSED.includes(key);
+                card.classList.toggle('collapsed', collapsed);
+                const icon = card.querySelector('.toggle-icon');
+                if (icon) icon.textContent = collapsed ? '▸' : '▾';
+            });
+        }
+        aplicarCardStates();
+        document.querySelectorAll('.card[data-card] .card-toggle').forEach(h => {
+            h.addEventListener('click', () => {
+                const card = h.closest('.card');
+                const collapsed = !card.classList.contains('collapsed');
+                card.classList.toggle('collapsed', collapsed);
+                localStorage.setItem('card_' + card.dataset.card, collapsed ? '1' : '0');
+                const icon = h.querySelector('.toggle-icon');
+                if (icon) icon.textContent = collapsed ? '▸' : '▾';
+            });
+        });
 
         // ===== Senha =====
         const pwd = document.getElementById('pwd');
