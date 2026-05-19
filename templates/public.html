@@ -49,24 +49,90 @@
 
         let equipes = [];
 
+        // Animacao de contagem dos pontos (count-up/down suave)
+        function animatePoints(el, to, durationMs = 600) {
+            const from = parseInt(el.textContent) || 0;
+            if (from === to) return;
+            const start = performance.now();
+            function tick(now) {
+                const t = Math.min(1, (now - start) / durationMs);
+                const eased = 1 - Math.pow(1 - t, 3);  // ease-out cubic
+                el.textContent = Math.round(from + (to - from) * eased);
+                if (t < 1) requestAnimationFrame(tick);
+                else el.textContent = to;
+            }
+            requestAnimationFrame(tick);
+        }
+
+        // FLIP animation: First (medir), Last (reposicionar), Invert (transform reverso), Play (transicao)
         function render() {
-            // Ordena por pontos desc; em empate, ordem de criacao (id)
-            const ordenadas = [...equipes].sort((a, b) => b.pontos - a.pontos || a.id - b.id);
-            ranking.innerHTML = '';
-            if (ordenadas.length === 0) {
+            const ord = [...equipes].sort((a, b) => b.pontos - a.pontos || a.id - b.id);
+
+            // 1. FIRST: medir posicoes atuais
+            const oldPositions = new Map();
+            ranking.querySelectorAll('.team-row').forEach(r => {
+                oldPositions.set(r.dataset.id, r.getBoundingClientRect().top);
+            });
+
+            // Estado vazio
+            if (ord.length === 0) {
                 ranking.innerHTML = '<p class="empty">Aguardando equipes...</p>';
                 return;
             }
-            ordenadas.forEach((eq, idx) => {
-                const node = rowTpl.content.cloneNode(true);
-                const row = node.querySelector('.team-row');
-                row.dataset.id = eq.id;
-                row.classList.add('team-color-' + ((eq.cor_idx || 1)));
+            const emptyMsg = ranking.querySelector('.empty');
+            if (emptyMsg) emptyMsg.remove();
+
+            // 2. LAST: atualizar DOM (reusar nodes existentes; criar novos; remover deletados)
+            const existing = new Map();
+            ranking.querySelectorAll('.team-row').forEach(r => existing.set(r.dataset.id, r));
+            const newOrder = [];
+            const idsAtivos = new Set();
+
+            ord.forEach((eq, idx) => {
+                const id = String(eq.id);
+                idsAtivos.add(id);
+                let row = existing.get(id);
+                if (!row) {
+                    const node = rowTpl.content.cloneNode(true);
+                    row = node.querySelector('.team-row');
+                    row.dataset.id = id;
+                }
+                // Reaplicar classes (cor pode ter mudado, lider tambem)
+                row.className = 'team-row team-color-' + (eq.cor_idx || 1);
                 if (idx === 0 && eq.pontos > 0) row.classList.add('leader');
                 row.querySelector('.pos').textContent = idx + 1;
                 row.querySelector('.team-name').textContent = eq.nome;
-                row.querySelector('.points-val').textContent = eq.pontos;
-                ranking.appendChild(row);
+                // pontos: animacao count-up
+                animatePoints(row.querySelector('.points-val'), eq.pontos, 500);
+                newOrder.push(row);
+            });
+
+            // Remove rows de equipes deletadas
+            existing.forEach((row, id) => {
+                if (!idsAtivos.has(id)) row.remove();
+            });
+
+            // Reordena no DOM (move nodes para a nova posicao)
+            newOrder.forEach(row => ranking.appendChild(row));
+
+            // 3. INVERT + 4. PLAY
+            newOrder.forEach(row => {
+                const id = row.dataset.id;
+                const oldTop = oldPositions.get(id);
+                if (oldTop === undefined) return;  // novo node, sem animacao de movimento
+                const newTop = row.getBoundingClientRect().top;
+                const dy = oldTop - newTop;
+                if (Math.abs(dy) < 1) return;
+                row.style.transition = 'none';
+                row.style.transform = `translateY(${dy}px)`;
+                row.getBoundingClientRect();  // force reflow
+                row.style.transition = 'transform 0.65s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s ease';
+                row.style.transform = '';
+                row.classList.add('moving');
+                setTimeout(() => {
+                    row.classList.remove('moving');
+                    row.style.transition = '';
+                }, 700);
             });
         }
 
