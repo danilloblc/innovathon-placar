@@ -8,7 +8,7 @@
 </head>
 <body class="admin">
     <header>
-        <h1>Painel Admin - Placar</h1>
+        <h1>Painel Admin · Placar</h1>
         <p class="subtitle">Innovathon 2026</p>
     </header>
 
@@ -19,40 +19,62 @@
             <p class="hint">Salva por sessao do navegador.</p>
         </section>
 
+        <!-- ===== PROVAS ===== -->
         <section class="card">
-            <h2>Adicionar equipe</h2>
-            <form id="form-nova">
-                <div class="row">
-                    <input type="text" id="nova-nome" placeholder="Nome da equipe" required>
-                    <button type="submit" class="btn primary">+ Criar</button>
-                </div>
-                <div class="cor-picker" id="nova-cor-picker">
-                    <span class="cor-label">Cor:</span>
-                    <span class="cor-swatch auto" data-cor="0" title="Auto (proxima disponivel)">auto</span>
-                    <span class="cor-swatch team-color-1" data-cor="1" title="Vermelho"></span>
-                    <span class="cor-swatch team-color-2" data-cor="2" title="Azul"></span>
-                    <span class="cor-swatch team-color-3" data-cor="3" title="Verde"></span>
-                    <span class="cor-swatch team-color-4" data-cor="4" title="Laranja"></span>
-                    <span class="cor-swatch team-color-5" data-cor="5" title="Roxo"></span>
-                    <span class="cor-swatch team-color-6" data-cor="6" title="Ciano"></span>
-                    <span class="cor-swatch team-color-7" data-cor="7" title="Rosa"></span>
-                    <span class="cor-swatch team-color-8" data-cor="8" title="Amarelo"></span>
-                </div>
+            <h2>Provas</h2>
+            <p class="hint">Cadastre as provas do evento. Cada equipe tera 1 lancamento por prova (sobrescreve ao re-lancar).</p>
+            <div id="lista-provas"></div>
+            <form id="form-prova" class="form-inline">
+                <input type="text" name="nome" placeholder="Nome da prova" required>
+                <select name="tipo" required>
+                    <option value="basica">Basica</option>
+                    <option value="dinamica">Dinamica</option>
+                    <option value="principal">Principal (com criterios)</option>
+                </select>
+                <input type="number" name="max_pontos" placeholder="Max pts" min="1" max="1000" required style="width: 90px;">
+                <button type="submit" class="btn primary">+ Adicionar</button>
             </form>
+            <p class="hint" id="prova-extra-hint" style="display:none;">
+                Provas do tipo <strong>Principal</strong> sao criadas com criterios padrao do edital.
+                Edite via botao "editar" depois de criar.
+            </p>
         </section>
 
+        <!-- ===== LANCAR PONTUACAO ===== -->
+        <section class="card">
+            <h2>Lancar Pontuacao</h2>
+            <div class="row" style="gap: 12px; margin-bottom: 12px;">
+                <label style="flex: 1;">
+                    <span style="font-size: 12px; color: var(--fg-dim);">Selecione a prova</span>
+                    <select id="prova-ativa"></select>
+                </label>
+            </div>
+            <div id="lancar-area"></div>
+            <div class="actions">
+                <button id="btn-aplicar" class="btn primary">Aplicar pendentes</button>
+                <button id="btn-cancelar" class="btn ghost">Cancelar pendentes</button>
+                <span id="pendentes-info" class="hint" style="margin-left: auto;"></span>
+            </div>
+        </section>
+
+        <!-- ===== EQUIPES ===== -->
         <section class="card">
             <h2>Equipes</h2>
-            <div id="lista"></div>
+            <form id="form-nova-equipe" class="form-inline">
+                <input type="text" id="nova-nome" placeholder="Nome da equipe" required>
+                <button type="submit" class="btn primary">+ Criar</button>
+            </form>
+            <div id="lista-equipes"></div>
             <div class="actions">
-                <button id="btn-reset" class="btn ghost">Zerar pontuacoes</button>
+                <button id="btn-reset" class="btn ghost">Zerar todos os lancamentos</button>
                 <a href="/" target="_blank" class="btn ghost">Abrir placar publico</a>
             </div>
         </section>
 
+        <!-- ===== TEMPOS DE ANIMACAO ===== -->
         <section class="card">
-            <h2>Tempos de animacao (milissegundos)</h2>
-            <p class="hint">Aplica em todos os visualizadores conectados em tempo real.</p>
+            <h2>Tempos de animacao (ms)</h2>
+            <p class="hint">Aplica em todos os visualizadores em tempo real.</p>
             <form id="form-animacao">
                 <div class="row" style="gap: 16px; align-items: flex-end;">
                     <label style="flex: 1;">
@@ -60,11 +82,11 @@
                         <input type="number" name="count_ms" min="50" max="5000" step="50" value="500">
                     </label>
                     <label style="flex: 1;">
-                        <span style="font-size: 12px; color: var(--fg-dim);">Reorder (subir/descer)</span>
+                        <span style="font-size: 12px; color: var(--fg-dim);">Reorder</span>
                         <input type="number" name="reorder_ms" min="100" max="5000" step="50" value="650">
                     </label>
                     <label style="flex: 1;">
-                        <span style="font-size: 12px; color: var(--fg-dim);">Flash do destaque</span>
+                        <span style="font-size: 12px; color: var(--fg-dim);">Flash</span>
                         <input type="number" name="flash_ms" min="100" max="5000" step="50" value="1200">
                     </label>
                     <button type="submit" class="btn primary">Salvar</button>
@@ -75,7 +97,67 @@
         <div id="msg" class="msg"></div>
     </main>
 
+    <!-- ===== MODAL EDICAO DE EQUIPE ===== -->
+    <div id="modal-equipe" class="modal" style="display:none;">
+        <div class="modal-box">
+            <h2>Editar equipe</h2>
+            <label>Nome
+                <input type="text" id="modal-nome">
+            </label>
+            <label style="margin-top: 14px; display: block;">Cor</label>
+            <div class="cor-picker" id="modal-cor-picker">
+                <span class="cor-swatch team-color-1" data-cor="1" title="Vermelho"></span>
+                <span class="cor-swatch team-color-2" data-cor="2" title="Azul"></span>
+                <span class="cor-swatch team-color-3" data-cor="3" title="Verde"></span>
+                <span class="cor-swatch team-color-4" data-cor="4" title="Laranja"></span>
+                <span class="cor-swatch team-color-5" data-cor="5" title="Roxo"></span>
+            </div>
+            <label style="margin-top: 14px; display: block;">
+                <input type="checkbox" id="modal-usar-hex" style="width: auto; margin-right: 6px;">
+                Usar cor customizada (HEX)
+            </label>
+            <input type="text" id="modal-hex" placeholder="#RRGGBB" style="display:none;" maxlength="7">
+            <div class="modal-preview" id="modal-preview">PREVIEW</div>
+            <div class="actions">
+                <button id="modal-salvar" class="btn primary">Salvar</button>
+                <button id="modal-cancelar" class="btn ghost">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== MODAL EDICAO DE PROVA (criterios) ===== -->
+    <div id="modal-prova" class="modal" style="display:none;">
+        <div class="modal-box" style="max-width: 600px;">
+            <h2>Editar prova</h2>
+            <label>Nome
+                <input type="text" id="modal-prova-nome">
+            </label>
+            <div class="row" style="gap: 12px; margin-top: 12px;">
+                <label style="flex: 1;">Tipo
+                    <select id="modal-prova-tipo">
+                        <option value="basica">Basica</option>
+                        <option value="dinamica">Dinamica</option>
+                        <option value="principal">Principal</option>
+                    </select>
+                </label>
+                <label style="flex: 1;">Max pontos
+                    <input type="number" id="modal-prova-max" min="1" max="1000">
+                </label>
+            </div>
+            <div id="modal-criterios-box" style="display:none; margin-top: 16px;">
+                <h3 style="font-size: 13px; color: var(--fg-dim); text-transform: uppercase;">Criterios (soma = max pontos)</h3>
+                <div id="modal-criterios"></div>
+                <button type="button" id="modal-add-criterio" class="btn ghost small">+ Adicionar criterio</button>
+            </div>
+            <div class="actions">
+                <button id="modal-prova-salvar" class="btn primary">Salvar</button>
+                <button id="modal-prova-cancelar" class="btn ghost">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        // ===== Auto-reload se servidor reiniciou =====
         const MY_VERSION = "{{ app_version }}";
         setInterval(async () => {
             try {
@@ -85,12 +167,19 @@
             } catch {}
         }, 5000);
 
+        // ===== Estado local =====
+        let equipes = [], provas = [], lancamentos = [];
+        let provaAtivaId = null;
+        let pendentes = {};  // { "equipe_id-prova_id": {valor, criterios_valores} }
+        let equipeExpandida = null;  // id da equipe com detalhes abertos
+
+        // ===== Senha =====
         const pwd = document.getElementById('pwd');
-        const lista = document.getElementById('lista');
-        const msg = document.getElementById('msg');
         pwd.value = sessionStorage.getItem('placar_pwd') || '';
         pwd.addEventListener('change', () => sessionStorage.setItem('placar_pwd', pwd.value));
 
+        // ===== Helpers =====
+        const msg = document.getElementById('msg');
         function showMsg(t, ok) {
             msg.textContent = t;
             msg.className = 'msg ' + (ok ? 'ok' : 'err');
@@ -107,106 +196,473 @@
         async function post(url, data) {
             const r = await fetch(url, { method: 'POST', body: fd(data) });
             const d = await r.json().catch(() => ({}));
-            if (!r.ok) showMsg('Erro: ' + (d.detail || r.status), false);
-            return r.ok ? d : null;
+            if (!r.ok) {
+                showMsg('Erro: ' + (d.detail || r.status), false);
+                return null;
+            }
+            return d;
         }
 
-        let equipes = [];
+        function corStyle(eq) {
+            return eq.cor_hex ? `--team-c:${eq.cor_hex}; --team-glow:${eq.cor_hex}88;` : '';
+        }
+        function corClass(eq) {
+            return eq.cor_hex ? '' : ('team-color-' + (eq.cor_idx || 1));
+        }
+        function tipoTag(tipo) {
+            const labels = { basica: 'BASICA', dinamica: 'DINAMICA', principal: 'PRINCIPAL' };
+            return `<span class="prova-tag tipo-${tipo}">${labels[tipo] || tipo}</span>`;
+        }
 
-        function render() {
-            const ord = [...equipes].sort((a, b) => b.pontos - a.pontos || a.id - b.id);
-            lista.innerHTML = '';
-            if (ord.length === 0) {
-                lista.innerHTML = '<p class="empty">Nenhuma equipe ainda. Crie acima.</p>';
+        function lancamentoDe(eqId, prId) {
+            return lancamentos.find(l => l.equipe_id === eqId && l.prova_id === prId);
+        }
+        function pendenteDe(eqId, prId) {
+            return pendentes[`${eqId}-${prId}`];
+        }
+
+        // ===== Render PROVAS =====
+        const listaProvas = document.getElementById('lista-provas');
+        const provaAtivaSelect = document.getElementById('prova-ativa');
+
+        function renderProvas() {
+            listaProvas.innerHTML = provas.length === 0
+                ? '<p class="empty">Nenhuma prova cadastrada.</p>'
+                : '';
+            provas.forEach(p => {
+                const row = document.createElement('div');
+                row.className = 'admin-row';
+                row.style.gridTemplateColumns = '1fr auto auto auto';
+                row.innerHTML = `
+                    <div>
+                        ${tipoTag(p.tipo)}
+                        <strong style="margin-left: 8px;">${p.nome}</strong>
+                        ${p.criterios ? `<small style="color: var(--fg-dim); display: block; margin-top: 4px;">${p.criterios.map(c => c.nome + '(' + c.max + ')').join(' · ')}</small>` : ''}
+                    </div>
+                    <div class="pts">${p.max_pontos} pts</div>
+                    <button data-prova-edit="${p.id}" class="btn small ghost">editar</button>
+                    <button data-prova-del="${p.id}" class="btn small danger">remover</button>
+                `;
+                listaProvas.appendChild(row);
+            });
+
+            // Atualiza dropdown de prova ativa
+            const idAtual = provaAtivaSelect.value;
+            provaAtivaSelect.innerHTML = '<option value="">-- selecione --</option>' +
+                provas.map(p => `<option value="${p.id}">${p.nome} (${p.tipo}, max ${p.max_pontos})</option>`).join('');
+            if (provas.find(p => String(p.id) === idAtual)) {
+                provaAtivaSelect.value = idAtual;
+            } else if (provas.length === 1) {
+                provaAtivaSelect.value = provas[0].id;
+                provaAtivaId = provas[0].id;
+            }
+            renderLancarArea();
+        }
+
+        document.getElementById('form-prova').addEventListener('submit', async e => {
+            e.preventDefault();
+            const f = e.target;
+            const tipo = f.tipo.value;
+            const max = parseInt(f.max_pontos.value);
+            let criterios_json = '';
+            if (tipo === 'principal') {
+                // Criterios padrao do edital
+                criterios_json = JSON.stringify([
+                    { nome: 'Inovacao e Relevancia', max: Math.round(max * 10 / 60) || 1 },
+                    { nome: 'Aplicabilidade Real', max: Math.round(max * 10 / 60) || 1 },
+                    { nome: 'Prototipo Funcional', max: Math.round(max * 25 / 60) || 1 },
+                    { nome: 'Metricas Antes vs Depois', max: Math.round(max * 10 / 60) || 1 },
+                    { nome: 'Clareza da Apresentacao', max: Math.round(max * 5 / 60) || 1 },
+                ]);
+            }
+            const r = await post('/admin/prova', { id: 0, nome: f.nome.value, tipo, max_pontos: max, criterios_json });
+            if (r) { f.reset(); showMsg('Prova adicionada.', true); }
+        });
+
+        listaProvas.addEventListener('click', async e => {
+            const editId = e.target.dataset.provaEdit;
+            const delId = e.target.dataset.provaDel;
+            if (editId) abrirModalProva(parseInt(editId));
+            if (delId) {
+                if (!confirm('Remover prova? Lancamentos relacionados tambem serao apagados.')) return;
+                const r = await post('/admin/prova/del', { id: delId });
+                if (r) showMsg('Prova removida.', true);
+            }
+        });
+
+        // ===== Modal de PROVA =====
+        const modalProva = document.getElementById('modal-prova');
+        const modalProvaTipo = document.getElementById('modal-prova-tipo');
+        const modalCriteriosBox = document.getElementById('modal-criterios-box');
+        const modalCriteriosLista = document.getElementById('modal-criterios');
+        let provaEditandoId = null;
+
+        function abrirModalProva(id) {
+            const p = provas.find(x => x.id === id);
+            if (!p) return;
+            provaEditandoId = id;
+            document.getElementById('modal-prova-nome').value = p.nome;
+            modalProvaTipo.value = p.tipo;
+            document.getElementById('modal-prova-max').value = p.max_pontos;
+            renderCriterios(p.criterios || []);
+            toggleCriteriosBox();
+            modalProva.style.display = 'flex';
+        }
+
+        function renderCriterios(criterios) {
+            modalCriteriosLista.innerHTML = '';
+            criterios.forEach((c, idx) => addCriterioRow(c.nome, c.max));
+        }
+
+        function addCriterioRow(nome = '', max = 0) {
+            const row = document.createElement('div');
+            row.className = 'row';
+            row.style.cssText = 'gap: 8px; margin-bottom: 6px;';
+            row.innerHTML = `
+                <input type="text" placeholder="Nome do criterio" value="${nome.replace(/"/g, '&quot;')}" style="flex: 2;">
+                <input type="number" placeholder="max" value="${max}" min="0" max="1000" style="width: 80px;">
+                <button type="button" class="btn small danger remove-criterio">×</button>
+            `;
+            row.querySelector('.remove-criterio').addEventListener('click', () => row.remove());
+            modalCriteriosLista.appendChild(row);
+        }
+
+        document.getElementById('modal-add-criterio').addEventListener('click', () => addCriterioRow());
+
+        modalProvaTipo.addEventListener('change', toggleCriteriosBox);
+        function toggleCriteriosBox() {
+            modalCriteriosBox.style.display = modalProvaTipo.value === 'principal' ? 'block' : 'none';
+        }
+
+        document.getElementById('modal-prova-cancelar').addEventListener('click', () => modalProva.style.display = 'none');
+        document.getElementById('modal-prova-salvar').addEventListener('click', async () => {
+            const nome = document.getElementById('modal-prova-nome').value;
+            const tipo = modalProvaTipo.value;
+            const max_pontos = parseInt(document.getElementById('modal-prova-max').value);
+            let criterios_json = '';
+            if (tipo === 'principal') {
+                const crits = [];
+                modalCriteriosLista.querySelectorAll('.row').forEach(r => {
+                    const inputs = r.querySelectorAll('input');
+                    const cn = inputs[0].value.trim();
+                    const cm = parseInt(inputs[1].value) || 0;
+                    if (cn) crits.push({ nome: cn, max: cm });
+                });
+                criterios_json = JSON.stringify(crits);
+            }
+            const r = await post('/admin/prova', {
+                id: provaEditandoId, nome, tipo, max_pontos, criterios_json
+            });
+            if (r) {
+                showMsg('Prova atualizada.', true);
+                modalProva.style.display = 'none';
+            }
+        });
+
+        // ===== LANCAR PONTUACAO =====
+        const lancarArea = document.getElementById('lancar-area');
+        const pendentesInfo = document.getElementById('pendentes-info');
+
+        provaAtivaSelect.addEventListener('change', () => {
+            provaAtivaId = parseInt(provaAtivaSelect.value) || null;
+            pendentes = {};
+            renderLancarArea();
+            updatePendentesInfo();
+        });
+
+        function renderLancarArea() {
+            if (!provaAtivaId || equipes.length === 0) {
+                lancarArea.innerHTML = '<p class="empty">' +
+                    (equipes.length === 0 ? 'Cadastre equipes primeiro.' : 'Selecione uma prova.') +
+                    '</p>';
                 return;
             }
-            ord.forEach(eq => {
+            const prova = provas.find(p => p.id === provaAtivaId);
+            if (!prova) { lancarArea.innerHTML = ''; return; }
+            lancarArea.innerHTML = '';
+            equipes.forEach(eq => {
+                const lanc = lancamentoDe(eq.id, provaAtivaId);
+                const pend = pendenteDe(eq.id, provaAtivaId);
+                const valorAtual = lanc ? lanc.valor : '';
                 const row = document.createElement('div');
-                row.className = 'admin-row team-color-' + (eq.cor_idx || 1);
-                let swatches = '';
-                for (let i = 1; i <= 8; i++) {
-                    const sel = i === eq.cor_idx ? ' selected' : '';
-                    swatches += `<span class="cor-swatch team-color-${i}${sel}" data-cor-id="${eq.id}" data-cor="${i}" title="Cor ${i}"></span>`;
+                row.className = 'lancar-row';
+                row.style.cssText = `--team-c: var(--team-c); ${corStyle(eq)}`;
+                row.classList.add(...(corClass(eq) ? [corClass(eq)] : []));
+
+                let inputsHtml = '';
+                if (prova.tipo === 'principal' && prova.criterios) {
+                    inputsHtml = '<div class="criterios-inputs">' +
+                        prova.criterios.map(c => {
+                            const valC = (pend && pend.criterios_valores && pend.criterios_valores[c.nome] !== undefined)
+                                ? pend.criterios_valores[c.nome]
+                                : (lanc && lanc.criterios_valores && lanc.criterios_valores[c.nome] !== undefined ? lanc.criterios_valores[c.nome] : '');
+                            return `<label class="crit-input">
+                                <span>${c.nome}</span>
+                                <input type="number" min="0" max="${c.max}" placeholder="0-${c.max}"
+                                    value="${valC}" data-equipe="${eq.id}" data-criterio="${c.nome}">
+                            </label>`;
+                        }).join('') +
+                        '</div>';
+                } else {
+                    inputsHtml = `<input type="number" class="lancar-input" min="0" max="${prova.max_pontos}"
+                        placeholder="0-${prova.max_pontos}"
+                        value="${pend ? pend.valor : valorAtual}"
+                        data-equipe="${eq.id}">`;
                 }
+
                 row.innerHTML = `
-                    <input class="rename" value="${eq.nome.replace(/"/g, '&quot;')}" data-id="${eq.id}">
-                    <div class="cores-row">${swatches}</div>
-                    <div class="pts"><span>${eq.pontos}</span> pts</div>
-                    <div class="botoes">
-                        <button data-id="${eq.id}" data-delta="-10" class="btn small">-10</button>
-                        <button data-id="${eq.id}" data-delta="-1" class="btn small">-1</button>
-                        <button data-id="${eq.id}" data-delta="+1" class="btn small primary">+1</button>
-                        <button data-id="${eq.id}" data-delta="+5" class="btn small primary">+5</button>
-                        <button data-id="${eq.id}" data-delta="+10" class="btn small primary">+10</button>
-                        <button data-id="${eq.id}" data-set="0" class="btn small ghost">zerar</button>
-                        <button data-id="${eq.id}" data-del="1" class="btn small danger">remover</button>
+                    <div class="lancar-equipe">
+                        <span class="cor-bar"></span>
+                        <strong>${eq.nome}</strong>
+                        <small>atual: ${lanc ? lanc.valor : '—'} / ${prova.max_pontos}</small>
                     </div>
+                    <div class="lancar-inputs">${inputsHtml}</div>
+                    <div class="lancar-preview" data-equipe-preview="${eq.id}"></div>
                 `;
-                lista.appendChild(row);
+                lancarArea.appendChild(row);
+                atualizarPreview(eq.id);
             });
         }
 
-        lista.addEventListener('click', async e => {
-            // Troca de cor de equipe existente
-            if (e.target.dataset.corId) {
-                const d = await post('/admin/equipe/cor', {
-                    id: e.target.dataset.corId,
-                    cor_idx: e.target.dataset.cor,
-                });
-                if (d) showMsg('Cor alterada.', true);
+        function atualizarPreview(eqId) {
+            const prova = provas.find(p => p.id === provaAtivaId);
+            if (!prova) return;
+            const previewEl = lancarArea.querySelector(`[data-equipe-preview="${eqId}"]`);
+            if (!previewEl) return;
+            const pend = pendenteDe(eqId, provaAtivaId);
+            const lanc = lancamentoDe(eqId, provaAtivaId);
+            if (!pend) {
+                previewEl.textContent = '';
+                previewEl.className = 'lancar-preview';
                 return;
             }
-            const id = e.target.dataset.id;
-            if (!id) return;
-            if (e.target.dataset.delta) {
-                const d = await post('/admin/pontos', { id, delta: e.target.dataset.delta });
-                if (d) showMsg('Pontos atualizados.', true);
-            } else if (e.target.dataset.set !== undefined) {
-                const d = await post('/admin/pontos', { id, set_to: e.target.dataset.set });
-                if (d) showMsg('Equipe zerada.', true);
-            } else if (e.target.dataset.del) {
-                if (!confirm('Remover esta equipe?')) return;
-                const d = await post('/admin/equipe/del', { id });
-                if (d) showMsg('Equipe removida.', true);
+            const atual = lanc ? lanc.valor : 0;
+            const novo = pend.valor;
+            const diff = novo - atual;
+            const sinal = diff >= 0 ? '+' : '';
+            previewEl.innerHTML = `<strong>${novo} pts</strong> <small>(${sinal}${diff})</small>`;
+            previewEl.className = 'lancar-preview ' + (diff > 0 ? 'positivo' : diff < 0 ? 'negativo' : '');
+        }
+
+        function updatePendentesInfo() {
+            const n = Object.keys(pendentes).length;
+            pendentesInfo.textContent = n === 0 ? 'Nenhum pendente.' : `${n} lancamento(s) pendente(s).`;
+        }
+
+        lancarArea.addEventListener('input', e => {
+            const eqId = parseInt(e.target.dataset.equipe);
+            if (!eqId) return;
+            const prova = provas.find(p => p.id === provaAtivaId);
+            if (!prova) return;
+            const key = `${eqId}-${provaAtivaId}`;
+
+            if (prova.tipo === 'principal') {
+                // Coleta todos os criterios
+                const inputs = lancarArea.querySelectorAll(`input[data-equipe="${eqId}"][data-criterio]`);
+                const vals = {};
+                let soma = 0;
+                inputs.forEach(inp => {
+                    const v = parseInt(inp.value) || 0;
+                    vals[inp.dataset.criterio] = v;
+                    soma += v;
+                });
+                pendentes[key] = { valor: soma, criterios_valores: vals };
+            } else {
+                const v = parseInt(e.target.value) || 0;
+                pendentes[key] = { valor: v, criterios_valores: null };
+            }
+            atualizarPreview(eqId);
+            updatePendentesInfo();
+        });
+
+        document.getElementById('btn-aplicar').addEventListener('click', async () => {
+            const keys = Object.keys(pendentes);
+            if (keys.length === 0) { showMsg('Nada pendente.', false); return; }
+            let ok = 0, err = 0;
+            for (const k of keys) {
+                const [eqId, prId] = k.split('-').map(Number);
+                const p = pendentes[k];
+                const data = { equipe_id: eqId, prova_id: prId, valor: p.valor };
+                if (p.criterios_valores) data.criterios_valores_json = JSON.stringify(p.criterios_valores);
+                const r = await post('/admin/lancamento', data);
+                if (r) ok++; else err++;
+            }
+            pendentes = {};
+            showMsg(`${ok} aplicado(s)${err ? `, ${err} erro(s)` : ''}.`, err === 0);
+            updatePendentesInfo();
+        });
+
+        document.getElementById('btn-cancelar').addEventListener('click', () => {
+            pendentes = {};
+            renderLancarArea();
+            updatePendentesInfo();
+            showMsg('Pendentes descartados.', true);
+        });
+
+        // ===== EQUIPES =====
+        const listaEquipes = document.getElementById('lista-equipes');
+
+        function renderEquipes() {
+            listaEquipes.innerHTML = '';
+            if (equipes.length === 0) {
+                listaEquipes.innerHTML = '<p class="empty">Nenhuma equipe.</p>';
+                return;
+            }
+            // Ordena por pontos desc
+            const ord = [...equipes].sort((a, b) => (b.pontos || 0) - (a.pontos || 0));
+            ord.forEach(eq => {
+                const row = document.createElement('div');
+                row.className = 'eq-row ' + (corClass(eq) || '');
+                row.style.cssText = corStyle(eq);
+                row.dataset.id = eq.id;
+                const isExpanded = equipeExpandida === eq.id;
+                row.innerHTML = `
+                    <div class="eq-header">
+                        <span class="cor-bar"></span>
+                        <strong class="eq-nome">${eq.nome}</strong>
+                        <span class="eq-pts">${eq.pontos || 0} pts</span>
+                        <button class="btn small ghost expand-btn" data-eq-toggle="${eq.id}">${isExpanded ? '▾' : '▸'}</button>
+                        <button class="btn small" data-eq-edit="${eq.id}">editar</button>
+                        <button class="btn small danger" data-eq-del="${eq.id}">remover</button>
+                    </div>
+                    <div class="eq-detalhes" style="${isExpanded ? '' : 'display:none;'}">${detalhesEquipeHtml(eq)}</div>
+                `;
+                listaEquipes.appendChild(row);
+            });
+        }
+
+        function detalhesEquipeHtml(eq) {
+            const lancsEq = lancamentos.filter(l => l.equipe_id === eq.id);
+            if (lancsEq.length === 0) return '<p class="hint">Sem lancamentos ainda.</p>';
+            let total = 0;
+            const linhas = lancsEq.map(l => {
+                const pr = provas.find(p => p.id === l.prova_id);
+                if (!pr) return '';
+                total += l.valor;
+                let crits = '';
+                if (l.criterios_valores) {
+                    crits = '<ul class="criterios-list">' +
+                        Object.entries(l.criterios_valores).map(([n, v]) => `<li>${n}: <strong>${v}</strong></li>`).join('') +
+                        '</ul>';
+                }
+                return `<div class="lancamento-linha">
+                    ${tipoTag(pr.tipo)} <strong>${pr.nome}</strong>
+                    <span class="lanc-valor">${l.valor} / ${pr.max_pontos} pts</span>
+                    <button class="btn small danger" data-lanc-del="${eq.id}-${l.prova_id}">remover</button>
+                    ${crits}
+                </div>`;
+            }).join('');
+            return linhas + `<div class="total-linha">TOTAL: <strong>${total} pts</strong></div>`;
+        }
+
+        listaEquipes.addEventListener('click', async e => {
+            const tgl = e.target.dataset.eqToggle;
+            const edit = e.target.dataset.eqEdit;
+            const del = e.target.dataset.eqDel;
+            const lancDel = e.target.dataset.lancDel;
+            if (tgl) {
+                const id = parseInt(tgl);
+                equipeExpandida = equipeExpandida === id ? null : id;
+                renderEquipes();
+            } else if (edit) {
+                abrirModalEquipe(parseInt(edit));
+            } else if (del) {
+                if (!confirm('Remover equipe? Os lancamentos relacionados tambem serao apagados.')) return;
+                const r = await post('/admin/equipe/del', { id: del });
+                if (r) showMsg('Equipe removida.', true);
+            } else if (lancDel) {
+                const [eqId, prId] = lancDel.split('-').map(Number);
+                if (!confirm('Remover este lancamento?')) return;
+                const r = await post('/admin/lancamento/del', { equipe_id: eqId, prova_id: prId });
+                if (r) showMsg('Lancamento removido.', true);
             }
         });
 
-        // Seletor de cor para nova equipe
-        let novaCorSelecionada = 0; // 0 = auto
-        const novaCorPicker = document.getElementById('nova-cor-picker');
-        novaCorPicker.addEventListener('click', e => {
-            if (!e.target.classList.contains('cor-swatch')) return;
-            novaCorPicker.querySelectorAll('.cor-swatch').forEach(s => s.classList.remove('selected'));
-            e.target.classList.add('selected');
-            novaCorSelecionada = parseInt(e.target.dataset.cor);
-        });
-
-        lista.addEventListener('change', async e => {
-            if (e.target.classList.contains('rename')) {
-                const id = e.target.dataset.id;
-                const nome = e.target.value;
-                const d = await post('/admin/equipe', { id, nome });
-                if (d) showMsg('Nome alterado.', true);
-            }
-        });
-
-        document.getElementById('form-nova').addEventListener('submit', async e => {
+        document.getElementById('form-nova-equipe').addEventListener('submit', async e => {
             e.preventDefault();
             const nome = document.getElementById('nova-nome').value;
-            const d = await post('/admin/equipe', { id: 0, nome, cor_idx: novaCorSelecionada });
-            if (d) {
+            const r = await post('/admin/equipe', { id: 0, nome });
+            if (r) {
                 showMsg('Equipe criada.', true);
                 document.getElementById('nova-nome').value = '';
             }
         });
 
         document.getElementById('btn-reset').addEventListener('click', async () => {
-            if (!confirm('Zerar pontuacao de TODAS as equipes?')) return;
-            const d = await post('/admin/reset', {});
-            if (d) showMsg('Pontuacoes zeradas.', true);
+            if (!confirm('Apagar TODOS os lancamentos? (equipes/provas serao preservadas)')) return;
+            const r = await post('/admin/reset', {});
+            if (r) showMsg('Lancamentos zerados.', true);
         });
 
-        // Form de tempos de animacao
+        // ===== MODAL EQUIPE =====
+        const modalEquipe = document.getElementById('modal-equipe');
+        const modalNome = document.getElementById('modal-nome');
+        const modalCorPicker = document.getElementById('modal-cor-picker');
+        const modalUsarHex = document.getElementById('modal-usar-hex');
+        const modalHex = document.getElementById('modal-hex');
+        const modalPreview = document.getElementById('modal-preview');
+        let equipeEditandoId = null;
+        let modalCorSelecionada = 1;
+
+        function abrirModalEquipe(id) {
+            const eq = equipes.find(e => e.id === id);
+            if (!eq) return;
+            equipeEditandoId = id;
+            modalNome.value = eq.nome;
+            modalCorSelecionada = eq.cor_idx || 1;
+            modalCorPicker.querySelectorAll('.cor-swatch').forEach(s => {
+                s.classList.toggle('selected', parseInt(s.dataset.cor) === modalCorSelecionada);
+            });
+            modalUsarHex.checked = !!eq.cor_hex;
+            modalHex.style.display = eq.cor_hex ? 'block' : 'none';
+            modalHex.value = eq.cor_hex || '';
+            atualizarModalPreview();
+            modalEquipe.style.display = 'flex';
+        }
+
+        function atualizarModalPreview() {
+            if (modalUsarHex.checked && modalHex.value.match(/^#[0-9a-fA-F]{6}$/)) {
+                modalPreview.style.background = modalHex.value;
+                modalPreview.style.color = '#fff';
+            } else {
+                modalPreview.style.color = '#fff';
+                modalPreview.style.background = '';
+                modalPreview.className = 'modal-preview team-color-' + modalCorSelecionada;
+            }
+        }
+
+        modalCorPicker.addEventListener('click', e => {
+            if (!e.target.classList.contains('cor-swatch')) return;
+            modalCorPicker.querySelectorAll('.cor-swatch').forEach(s => s.classList.remove('selected'));
+            e.target.classList.add('selected');
+            modalCorSelecionada = parseInt(e.target.dataset.cor);
+            modalUsarHex.checked = false;
+            modalHex.style.display = 'none';
+            atualizarModalPreview();
+        });
+
+        modalUsarHex.addEventListener('change', () => {
+            modalHex.style.display = modalUsarHex.checked ? 'block' : 'none';
+            atualizarModalPreview();
+        });
+        modalHex.addEventListener('input', atualizarModalPreview);
+
+        document.getElementById('modal-cancelar').addEventListener('click', () => modalEquipe.style.display = 'none');
+        document.getElementById('modal-salvar').addEventListener('click', async () => {
+            const data = { id: equipeEditandoId, nome: modalNome.value, cor_idx: modalCorSelecionada, cor_hex: '' };
+            if (modalUsarHex.checked) {
+                const hex = modalHex.value.trim();
+                if (!hex.match(/^#[0-9a-fA-F]{6}$/)) { showMsg('HEX invalido. Use #RRGGBB.', false); return; }
+                data.cor_hex = hex;
+            }
+            const r = await post('/admin/equipe', data);
+            if (r) {
+                showMsg('Equipe atualizada.', true);
+                modalEquipe.style.display = 'none';
+            }
+        });
+
+        // ===== TEMPOS DE ANIMACAO =====
         const formAnim = document.getElementById('form-animacao');
         function setAnimInputs(a) {
             if (!a) return;
@@ -219,30 +675,25 @@
             const fd2 = new FormData(formAnim);
             fd2.append('password', pwd.value);
             const r = await fetch('/admin/animacao', { method: 'POST', body: fd2 });
-            const d = await r.json().catch(() => ({}));
             if (r.ok) showMsg('Tempos salvos.', true);
-            else showMsg('Erro: ' + (d.detail || r.status), false);
+            else showMsg('Erro ao salvar tempos.', false);
         });
 
-        // SSE para refletir mudancas feitas em outras abas/dispositivos
+        // ===== SSE =====
+        function applySnapshot(s) {
+            equipes = s.equipes || [];
+            provas = s.provas || [];
+            lancamentos = s.lancamentos || [];
+            setAnimInputs(s.animacao);
+            renderProvas();
+            renderEquipes();
+            // re-render lancar area mantendo pendentes
+            renderLancarArea();
+        }
+
         const es = new EventSource('/stream');
-        es.addEventListener('snapshot', e => {
-            const s = JSON.parse(e.data);
-            equipes = s.equipes || [];
-            setAnimInputs(s.animacao);
-            render();
-        });
-        es.addEventListener('equipes', e => {
-            const s = JSON.parse(e.data);
-            equipes = s.equipes || [];
-            setAnimInputs(s.animacao);
-            render();
-        });
-        es.addEventListener('pontos', e => {
-            const d = JSON.parse(e.data);
-            const eq = equipes.find(x => x.id === d.id);
-            if (eq) { eq.pontos = d.pontos; render(); }
-        });
+        es.addEventListener('snapshot', e => applySnapshot(JSON.parse(e.data)));
+        es.addEventListener('state', e => applySnapshot(JSON.parse(e.data)));
         es.addEventListener('animacao', e => setAnimInputs(JSON.parse(e.data)));
     </script>
 </body>

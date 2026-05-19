@@ -21,14 +21,17 @@
 
     <template id="row-template">
         <div class="team-row" data-id="">
-            <div class="pos"></div>
-            <div class="team-info">
-                <div class="team-name"></div>
+            <div class="team-main">
+                <div class="pos"></div>
+                <div class="team-info">
+                    <div class="team-name"></div>
+                </div>
+                <div class="team-points">
+                    <span class="points-val">0</span>
+                    <span class="points-label">pts</span>
+                </div>
             </div>
-            <div class="team-points">
-                <span class="points-val">0</span>
-                <span class="points-label">pts</span>
-            </div>
+            <div class="team-detalhes" style="display:none;"></div>
         </div>
     </template>
 
@@ -47,17 +50,28 @@
         const conn = document.getElementById('connection');
         const connText = document.getElementById('connection-text');
 
-        let equipes = [];
+        let equipes = [], provas = [], lancamentos = [];
         let anim = { count_ms: 500, reorder_ms: 650, flash_ms: 1200 };
+        let expandida = null; // id
 
-        // Animacao de contagem dos pontos (count-up/down suave)
+        function corStyle(eq) {
+            return eq.cor_hex ? `--team-c:${eq.cor_hex}; --team-glow:${eq.cor_hex}88;` : '';
+        }
+        function corClass(eq) {
+            return eq.cor_hex ? '' : ('team-color-' + (eq.cor_idx || 1));
+        }
+        function tipoTag(tipo) {
+            const labels = { basica: 'BASICA', dinamica: 'DINAMICA', principal: 'PRINCIPAL' };
+            return `<span class="prova-tag tipo-${tipo}">${labels[tipo] || tipo}</span>`;
+        }
+
         function animatePoints(el, to, durationMs = 600) {
             const from = parseInt(el.textContent) || 0;
             if (from === to) return;
             const start = performance.now();
             function tick(now) {
                 const t = Math.min(1, (now - start) / durationMs);
-                const eased = 1 - Math.pow(1 - t, 3);  // ease-out cubic
+                const eased = 1 - Math.pow(1 - t, 3);
                 el.textContent = Math.round(from + (to - from) * eased);
                 if (t < 1) requestAnimationFrame(tick);
                 else el.textContent = to;
@@ -65,17 +79,37 @@
             requestAnimationFrame(tick);
         }
 
-        // FLIP animation: First (medir), Last (reposicionar), Invert (transform reverso), Play (transicao)
-        function render() {
-            const ord = [...equipes].sort((a, b) => b.pontos - a.pontos || a.id - b.id);
+        function detalhesHtml(eq) {
+            const lancs = lancamentos.filter(l => l.equipe_id === eq.id);
+            if (lancs.length === 0) return '<p class="empty-det">Sem lancamentos ainda.</p>';
+            let total = 0;
+            const html = lancs.map(l => {
+                const pr = provas.find(p => p.id === l.prova_id);
+                if (!pr) return '';
+                total += l.valor;
+                let crits = '';
+                if (l.criterios_valores) {
+                    crits = '<ul class="criterios-list">' +
+                        Object.entries(l.criterios_valores).map(([n, v]) => `<li><span>${n}</span> <strong>${v}</strong></li>`).join('') +
+                        '</ul>';
+                }
+                return `<div class="lancamento-pub">
+                    <div class="lanc-head">${tipoTag(pr.tipo)} <strong>${pr.nome}</strong> <span class="lanc-pts">${l.valor} / ${pr.max_pontos}</span></div>
+                    ${crits}
+                </div>`;
+            }).join('');
+            return html + `<div class="det-total">TOTAL <strong>${total}</strong> pts</div>`;
+        }
 
-            // 1. FIRST: medir posicoes atuais
+        function render() {
+            const ord = [...equipes].sort((a, b) => (b.pontos || 0) - (a.pontos || 0) || a.id - b.id);
+
+            // FIRST: medir posicoes atuais
             const oldPositions = new Map();
             ranking.querySelectorAll('.team-row').forEach(r => {
                 oldPositions.set(r.dataset.id, r.getBoundingClientRect().top);
             });
 
-            // Estado vazio
             if (ord.length === 0) {
                 ranking.innerHTML = '<p class="empty">Aguardando equipes...</p>';
                 return;
@@ -83,7 +117,6 @@
             const emptyMsg = ranking.querySelector('.empty');
             if (emptyMsg) emptyMsg.remove();
 
-            // 2. LAST: atualizar DOM (reusar nodes existentes; criar novos; remover deletados)
             const existing = new Map();
             ranking.querySelectorAll('.team-row').forEach(r => existing.set(r.dataset.id, r));
             const newOrder = [];
@@ -98,47 +131,53 @@
                     row = node.querySelector('.team-row');
                     row.dataset.id = id;
                 }
-                // Reaplicar classes (cor pode ter mudado, lider tambem)
-                row.className = 'team-row team-color-' + (eq.cor_idx || 1);
-                if (idx === 0 && eq.pontos > 0) row.classList.add('leader');
+                row.className = 'team-row ' + (corClass(eq) || '');
+                row.setAttribute('style', corStyle(eq));
+                if (idx === 0 && (eq.pontos || 0) > 0) row.classList.add('leader');
+                if (expandida === eq.id) row.classList.add('expanded');
                 row.querySelector('.pos').textContent = idx + 1;
                 row.querySelector('.team-name').textContent = eq.nome;
-                // pontos: animacao count-up
-                animatePoints(row.querySelector('.points-val'), eq.pontos, anim.count_ms);
+                animatePoints(row.querySelector('.points-val'), eq.pontos || 0, anim.count_ms);
+                // detalhes
+                const det = row.querySelector('.team-detalhes');
+                det.innerHTML = detalhesHtml(eq);
+                det.style.display = expandida === eq.id ? 'block' : 'none';
                 newOrder.push(row);
             });
 
-            // Remove rows de equipes deletadas
             existing.forEach((row, id) => {
                 if (!idsAtivos.has(id)) row.remove();
             });
 
-            // Reordena no DOM (move nodes para a nova posicao)
             newOrder.forEach(row => ranking.appendChild(row));
 
-            // 3. INVERT + 4. PLAY
+            // FLIP animation
             newOrder.forEach(row => {
                 const id = row.dataset.id;
                 const oldTop = oldPositions.get(id);
-                if (oldTop === undefined) return;  // novo node, sem animacao de movimento
+                if (oldTop === undefined) return;
                 const newTop = row.getBoundingClientRect().top;
                 const dy = oldTop - newTop;
                 if (Math.abs(dy) < 1) return;
+                const existingStyle = row.getAttribute('style') || '';
                 row.style.transition = 'none';
                 row.style.transform = `translateY(${dy}px)`;
-                row.getBoundingClientRect();  // force reflow
+                row.getBoundingClientRect();
                 row.style.transition = `transform ${anim.reorder_ms}ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s ease`;
                 row.style.transform = '';
                 row.classList.add('moving');
                 setTimeout(() => {
                     row.classList.remove('moving');
                     row.style.transition = '';
+                    row.style.transform = '';
                 }, anim.reorder_ms + 50);
             });
         }
 
         function applySnapshot(s) {
             equipes = s.equipes || [];
+            provas = s.provas || [];
+            lancamentos = s.lancamentos || [];
             if (s.animacao) anim = Object.assign(anim, s.animacao);
             render();
         }
@@ -151,6 +190,15 @@
                 setTimeout(() => row.classList.remove('flash'), anim.flash_ms);
             }
         }
+
+        // Click pra expandir/colapsar
+        ranking.addEventListener('click', e => {
+            const row = e.target.closest('.team-row');
+            if (!row) return;
+            const id = parseInt(row.dataset.id);
+            expandida = expandida === id ? null : id;
+            render();
+        });
 
         function connect() {
             const es = new EventSource('/stream');
@@ -165,15 +213,17 @@
                 connText.textContent = 'Reconectando...';
             };
             es.addEventListener('snapshot', e => applySnapshot(JSON.parse(e.data)));
-            es.addEventListener('equipes', e => applySnapshot(JSON.parse(e.data)));
-            es.addEventListener('pontos', e => {
-                const d = JSON.parse(e.data);
-                const eq = equipes.find(x => x.id === d.id);
-                if (eq) {
-                    eq.pontos = d.pontos;
-                    render();
-                    flashRow(d.id);
-                }
+            es.addEventListener('state', e => {
+                const s = JSON.parse(e.data);
+                // Detecta quais equipes tiveram pontos alterados para flash
+                const novosEquipes = s.equipes || [];
+                novosEquipes.forEach(neq => {
+                    const old = equipes.find(o => o.id === neq.id);
+                    if (old && (old.pontos || 0) !== (neq.pontos || 0)) {
+                        setTimeout(() => flashRow(neq.id), 100);
+                    }
+                });
+                applySnapshot(s);
             });
             es.addEventListener('animacao', e => {
                 anim = Object.assign(anim, JSON.parse(e.data));

@@ -1,26 +1,25 @@
 """Placar do II Innovathon Contagil 2026.
 
-Painel admin web para registrar pontuacoes; placar publico atualiza em tempo
-real via Server-Sent Events.
+Modelo de dados:
+  - equipes:     lista de {id, nome, cor_idx, cor_hex}
+  - provas:      lista de {id, nome, tipo, max_pontos, criterios?}
+                 tipo in {basica, dinamica, principal}
+                 criterios = lista de {nome, max} (so para tipo=principal)
+  - lancamentos: lista de {id, equipe_id, prova_id, valor, ts, criterios_valores?}
+                 UNICO por (equipe_id, prova_id) - re-lancar substitui
+                 criterios_valores = {nome_criterio: valor} (para tipo=principal)
+  - animacao:    {count_ms, reorder_ms, flash_ms}
 
-Persistencia simples em JSON no disco (data/equipes.json).
-
-Rotas:
-  GET  /                  -> placar publico (ranking ao vivo)
-  GET  /admin             -> painel admin (lancar pontos)
-  GET  /version           -> versao do app (auto-reload do front)
-  GET  /state             -> estado atual em JSON
-  GET  /stream            -> SSE com eventos do placar
-  POST /admin/pontos      -> adiciona/altera pontos de uma equipe
-  POST /admin/equipe      -> cria/renomeia equipe
-  POST /admin/equipe/del  -> remove equipe
-  POST /admin/reset       -> zera todas as pontuacoes
+Pontos totais de uma equipe = soma dos lancamentos.
+Endpoints documentados no README.
 """
 import asyncio
 import json
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -35,32 +34,76 @@ DATA_FILE.parent.mkdir(exist_ok=True)
 ADMIN_PASSWORD = os.environ.get("PLACAR_ADMIN_PASSWORD", "innovathon2026")
 APP_VERSION = str(int(time.time()))
 
-# ====== Estado ======
 DEFAULT_ANIMACAO = {"count_ms": 500, "reorder_ms": 650, "flash_ms": 1200}
 
 
-def _carregar():
+def _provas_padrao() -> list[dict]:
+    """Provas conforme edital INNOVATHON 2026."""
+    return [
+        {"id": 1, "nome": "Manipulação de Dados",      "tipo": "basica",    "max_pontos": 20, "criterios": None},
+        {"id": 2, "nome": "Integração de Dados",       "tipo": "basica",    "max_pontos": 20, "criterios": None},
+        {"id": 3, "nome": "Lógica e Documentação",     "tipo": "basica",    "max_pontos": 20, "criterios": None},
+        {"id": 4, "nome": "Dinâmica Competitiva",      "tipo": "dinamica",  "max_pontos": 20, "criterios": None},
+        {"id": 5, "nome": "Desafio Estratégico Principal", "tipo": "principal", "max_pontos": 60, "criterios": [
+            {"nome": "Inovação e Relevância",       "max": 10},
+            {"nome": "Aplicabilidade Real",         "max": 10},
+            {"nome": "Protótipo Funcional",         "max": 25},
+            {"nome": "Métricas Antes vs Depois",    "max": 10},
+            {"nome": "Clareza da Apresentação",     "max": 5},
+        ]},
+    ]
+
+
+def _carregar() -> dict:
     if DATA_FILE.exists():
         try:
             d = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-            d.setdefault("equipes", [])
-            d.setdefault("animacao", DEFAULT_ANIMACAO.copy())
-            # merge defaults para chaves novas
-            for k, v in DEFAULT_ANIMACAO.items():
-                d["animacao"].setdefault(k, v)
-            return d
         except json.JSONDecodeError:
-            pass
-    return {"equipes": [], "animacao": DEFAULT_ANIMACAO.copy()}
+            d = {}
+    else:
+        d = {}
 
-def _salvar(estado):
+    d.setdefault("equipes", [])
+    d.setdefault("provas", _provas_padrao() if not d.get("provas") else d["provas"])
+    d.setdefault("lancamentos", [])
+    d.setdefault("animacao", DEFAULT_ANIMACAO.copy())
+    for k, v in DEFAULT_ANIMACAO.items():
+        d["animacao"].setdefault(k, v)
+    # Migracao: equipes antigas tinham campo "pontos" - remove (calculado dinamicamente)
+    for e in d["equipes"]:
+        e.pop("pontos", None)
+        e.setdefault("cor_idx", 1)
+        e.setdefault("cor_hex", None)
+    return d
+
+
+def _salvar(estado: dict) -> None:
     DATA_FILE.write_text(json.dumps(estado, ensure_ascii=False, indent=2), encoding="utf-8")
+
 
 state = _carregar()
 subscribers: list[asyncio.Queue] = []
 
 
-async def broadcast(event: str, data: dict):
+def _pontos_equipe(equipe_id: int) -> int:
+    """Soma de todos os lancamentos de uma equipe."""
+    return sum(l["valor"] for l in state["lancamentos"] if l["equipe_id"] == equipe_id)
+
+
+def _state_publico() -> dict:
+    """Estado com pontos pre-calculados nas equipes (para o cliente)."""
+    return {
+        "equipes": [
+            {**e, "pontos": _pontos_equipe(e["id"])}
+            for e in state["equipes"]
+        ],
+        "provas": state["provas"],
+        "lancamentos": state["lancamentos"],
+        "animacao": state["animacao"],
+    }
+
+
+async def broadcast(event: str, data: Any) -> None:
     payload = {"event": event, "data": data}
     for q in list(subscribers):
         try:
@@ -72,22 +115,26 @@ async def broadcast(event: str, data: dict):
                 pass
 
 
-def _next_id():
-    return max((e["id"] for e in state["equipes"]), default=0) + 1
+def _next_id(items: list[dict]) -> int:
+    return max((x["id"] for x in items), default=0) + 1
 
 
-def _next_cor():
-    usadas = {e.get("cor_idx") for e in state["equipes"]}
-    for i in range(1, 9):
+def _next_cor() -> int:
+    usadas = {e["cor_idx"] for e in state["equipes"] if not e.get("cor_hex")}
+    for i in range(1, 6):  # palette principal: 1-5
         if i not in usadas:
             return i
-    return (len(state["equipes"]) % 8) + 1
+    return (len(state["equipes"]) % 5) + 1
+
+
+def _check_auth(password: str) -> None:
+    if password != ADMIN_PASSWORD:
+        raise HTTPException(401, "Senha invalida")
 
 
 app = FastAPI(title="Innovathon 2026 - Placar")
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
-
 
 NO_CACHE = {
     "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -121,33 +168,35 @@ async def version():
 
 @app.get("/state")
 async def get_state():
-    return state
+    return _state_publico()
 
 
-def _check_auth(password: str):
-    if password != ADMIN_PASSWORD:
-        raise HTTPException(401, "Senha invalida")
-
+# ====== EQUIPES ======
 
 @app.post("/admin/equipe")
-async def criar_renomear(
+async def equipe_criar_renomear(
     password: str = Form(...),
     id: int = Form(0),
     nome: str = Form(...),
     cor_idx: int = Form(0),
+    cor_hex: str = Form(""),
 ):
-    """Cria (id=0) ou atualiza equipe. cor_idx 1-8; 0 = manter/auto."""
+    """Cria (id=0) ou atualiza nome/cor da equipe. cor_idx 1-5. cor_hex sobrescreve cor_idx."""
     _check_auth(password)
     nome = nome.strip()
     if not nome:
         raise HTTPException(400, "Nome obrigatorio")
-    cor = cor_idx if 1 <= cor_idx <= 8 else 0
+    cor_idx = cor_idx if 1 <= cor_idx <= 5 else 0
+    hex_val = cor_hex.strip() or None
+    if hex_val and not (hex_val.startswith("#") and len(hex_val) == 7):
+        raise HTTPException(400, "cor_hex invalido (use #RRGGBB)")
+
     if id == 0:
         nova = {
-            "id": _next_id(),
+            "id": _next_id(state["equipes"]),
             "nome": nome,
-            "pontos": 0,
-            "cor_idx": cor if cor else _next_cor(),
+            "cor_idx": cor_idx or _next_cor(),
+            "cor_hex": hex_val,
         }
         state["equipes"].append(nova)
     else:
@@ -155,66 +204,182 @@ async def criar_renomear(
         if not eq:
             raise HTTPException(404, "Equipe nao encontrada")
         eq["nome"] = nome
-        if cor:
-            eq["cor_idx"] = cor
+        if cor_idx:
+            eq["cor_idx"] = cor_idx
+        # cor_hex eh sempre setado (None se vazio) para permitir limpar
+        eq["cor_hex"] = hex_val
     _salvar(state)
-    await broadcast("equipes", state)
-    return {"ok": True}
-
-
-@app.post("/admin/equipe/cor")
-async def alterar_cor(password: str = Form(...), id: int = Form(...), cor_idx: int = Form(...)):
-    _check_auth(password)
-    if not 1 <= cor_idx <= 8:
-        raise HTTPException(400, "cor_idx deve ser 1-8")
-    eq = next((e for e in state["equipes"] if e["id"] == id), None)
-    if not eq:
-        raise HTTPException(404, "Equipe nao encontrada")
-    eq["cor_idx"] = cor_idx
-    _salvar(state)
-    await broadcast("equipes", state)
+    await broadcast("state", _state_publico())
     return {"ok": True}
 
 
 @app.post("/admin/equipe/del")
-async def remover(password: str = Form(...), id: int = Form(...)):
+async def equipe_remover(password: str = Form(...), id: int = Form(...)):
     _check_auth(password)
     state["equipes"] = [e for e in state["equipes"] if e["id"] != id]
+    # Remove tambem lancamentos orfaos
+    state["lancamentos"] = [l for l in state["lancamentos"] if l["equipe_id"] != id]
     _salvar(state)
-    await broadcast("equipes", state)
+    await broadcast("state", _state_publico())
     return {"ok": True}
 
 
-@app.post("/admin/pontos")
-async def pontuar(
+# ====== PROVAS ======
+
+@app.post("/admin/prova")
+async def prova_criar_renomear(
     password: str = Form(...),
-    id: int = Form(...),
-    delta: int = Form(0),
-    set_to: int = Form(-1),
+    id: int = Form(0),
+    nome: str = Form(...),
+    tipo: str = Form(...),
+    max_pontos: int = Form(...),
+    criterios_json: str = Form(""),
 ):
-    """delta = soma; set_to >= 0 sobrescreve."""
+    """Cria (id=0) ou atualiza prova. criterios_json so para tipo=principal."""
     _check_auth(password)
-    eq = next((e for e in state["equipes"] if e["id"] == id), None)
+    nome = nome.strip()
+    if not nome:
+        raise HTTPException(400, "Nome obrigatorio")
+    if tipo not in {"basica", "dinamica", "principal"}:
+        raise HTTPException(400, "tipo deve ser basica|dinamica|principal")
+    if max_pontos <= 0:
+        raise HTTPException(400, "max_pontos > 0")
+    criterios = None
+    if tipo == "principal":
+        try:
+            criterios = json.loads(criterios_json) if criterios_json else None
+        except json.JSONDecodeError:
+            raise HTTPException(400, "criterios_json invalido")
+        if not isinstance(criterios, list) or not criterios:
+            raise HTTPException(400, "Prova principal exige criterios (lista com nome e max)")
+        soma = sum(c.get("max", 0) for c in criterios)
+        if soma != max_pontos:
+            raise HTTPException(400, f"Soma dos criterios ({soma}) deve igualar max_pontos ({max_pontos})")
+
+    if id == 0:
+        nova = {
+            "id": _next_id(state["provas"]),
+            "nome": nome,
+            "tipo": tipo,
+            "max_pontos": max_pontos,
+            "criterios": criterios,
+        }
+        state["provas"].append(nova)
+    else:
+        pr = next((p for p in state["provas"] if p["id"] == id), None)
+        if not pr:
+            raise HTTPException(404, "Prova nao encontrada")
+        pr["nome"] = nome
+        pr["tipo"] = tipo
+        pr["max_pontos"] = max_pontos
+        pr["criterios"] = criterios
+    _salvar(state)
+    await broadcast("state", _state_publico())
+    return {"ok": True}
+
+
+@app.post("/admin/prova/del")
+async def prova_remover(password: str = Form(...), id: int = Form(...)):
+    _check_auth(password)
+    state["provas"] = [p for p in state["provas"] if p["id"] != id]
+    # Remove lancamentos orfaos
+    state["lancamentos"] = [l for l in state["lancamentos"] if l["prova_id"] != id]
+    _salvar(state)
+    await broadcast("state", _state_publico())
+    return {"ok": True}
+
+
+# ====== LANCAMENTOS ======
+
+@app.post("/admin/lancamento")
+async def lancar(
+    password: str = Form(...),
+    equipe_id: int = Form(...),
+    prova_id: int = Form(...),
+    valor: int = Form(...),
+    criterios_valores_json: str = Form(""),
+):
+    """Lanca/sobrescreve pontuacao de uma equipe em uma prova.
+
+    valor: total da prova para a equipe (0 a max_pontos).
+    criterios_valores_json: {nome_criterio: valor} (so para tipo=principal).
+    """
+    _check_auth(password)
+    eq = next((e for e in state["equipes"] if e["id"] == equipe_id), None)
     if not eq:
         raise HTTPException(404, "Equipe nao encontrada")
-    if set_to >= 0:
-        eq["pontos"] = set_to
+    pr = next((p for p in state["provas"] if p["id"] == prova_id), None)
+    if not pr:
+        raise HTTPException(404, "Prova nao encontrada")
+    if not 0 <= valor <= pr["max_pontos"]:
+        raise HTTPException(400, f"valor deve estar entre 0 e {pr['max_pontos']}")
+
+    crit_vals = None
+    if pr["tipo"] == "principal":
+        try:
+            crit_vals = json.loads(criterios_valores_json) if criterios_valores_json else {}
+        except json.JSONDecodeError:
+            raise HTTPException(400, "criterios_valores_json invalido")
+        # Valida cada criterio dentro do max
+        nomes_validos = {c["nome"]: c["max"] for c in (pr["criterios"] or [])}
+        for nome, val in crit_vals.items():
+            if nome not in nomes_validos:
+                raise HTTPException(400, f"Criterio desconhecido: {nome}")
+            if not 0 <= val <= nomes_validos[nome]:
+                raise HTTPException(400, f"Criterio '{nome}' fora do range 0..{nomes_validos[nome]}")
+        soma = sum(crit_vals.values())
+        if soma != valor:
+            raise HTTPException(400, f"Soma dos criterios ({soma}) != valor ({valor})")
+
+    # Procura lancamento existente (unico por equipe+prova)
+    existente = next((l for l in state["lancamentos"]
+                      if l["equipe_id"] == equipe_id and l["prova_id"] == prova_id), None)
+    ts = datetime.now(timezone.utc).isoformat()
+    if existente:
+        existente["valor"] = valor
+        existente["ts"] = ts
+        existente["criterios_valores"] = crit_vals
     else:
-        eq["pontos"] = max(0, eq["pontos"] + delta)
+        state["lancamentos"].append({
+            "id": _next_id(state["lancamentos"]),
+            "equipe_id": equipe_id,
+            "prova_id": prova_id,
+            "valor": valor,
+            "ts": ts,
+            "criterios_valores": crit_vals,
+        })
     _salvar(state)
-    await broadcast("pontos", {"id": id, "pontos": eq["pontos"]})
-    return {"ok": True, "pontos": eq["pontos"]}
+    await broadcast("state", _state_publico())
+    return {"ok": True, "pontos_equipe": _pontos_equipe(equipe_id)}
+
+
+@app.post("/admin/lancamento/del")
+async def lancamento_remover(
+    password: str = Form(...),
+    equipe_id: int = Form(...),
+    prova_id: int = Form(...),
+):
+    _check_auth(password)
+    state["lancamentos"] = [
+        l for l in state["lancamentos"]
+        if not (l["equipe_id"] == equipe_id and l["prova_id"] == prova_id)
+    ]
+    _salvar(state)
+    await broadcast("state", _state_publico())
+    return {"ok": True}
 
 
 @app.post("/admin/reset")
 async def reset(password: str = Form(...)):
+    """Zera todos os lancamentos (mantem equipes e provas)."""
     _check_auth(password)
-    for e in state["equipes"]:
-        e["pontos"] = 0
+    state["lancamentos"] = []
     _salvar(state)
-    await broadcast("equipes", state)
+    await broadcast("state", _state_publico())
     return {"ok": True}
 
+
+# ====== ANIMACAO ======
 
 @app.post("/admin/animacao")
 async def set_animacao(
@@ -234,6 +399,8 @@ async def set_animacao(
     return {"ok": True, "animacao": state["animacao"]}
 
 
+# ====== SSE ======
+
 @app.get("/stream")
 async def stream(request: Request):
     queue: asyncio.Queue = asyncio.Queue(maxsize=500)
@@ -242,7 +409,7 @@ async def stream(request: Request):
     print(f"[SSE] conectado: {ip} (total: {len(subscribers)})")
 
     async def gen():
-        yield {"event": "snapshot", "data": json.dumps(state)}
+        yield {"event": "snapshot", "data": json.dumps(_state_publico())}
         try:
             while True:
                 msg = await queue.get()
