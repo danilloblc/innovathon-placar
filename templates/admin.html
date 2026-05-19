@@ -94,8 +94,10 @@
             </form>
         </section>
 
-        <div id="msg" class="msg"></div>
     </main>
+
+    <!-- Toast flutuante (visivel em qualquer scroll, especialmente mobile) -->
+    <div id="msg" class="msg toast"></div>
 
     <!-- ===== MODAL EDICAO DE EQUIPE ===== -->
     <div id="modal-equipe" class="modal" style="display:none;">
@@ -194,13 +196,20 @@
         }
 
         async function post(url, data) {
-            const r = await fetch(url, { method: 'POST', body: fd(data) });
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok) {
-                showMsg('Erro: ' + (d.detail || r.status), false);
+            try {
+                const r = await fetch(url, { method: 'POST', body: fd(data) });
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok) {
+                    showMsg('Erro: ' + (d.detail || r.status), false);
+                    console.error('[POST]', url, r.status, d);
+                    return null;
+                }
+                return d;
+            } catch (err) {
+                showMsg('Erro de rede: ' + err.message, false);
+                console.error('[POST network]', url, err);
                 return null;
             }
-            return d;
         }
 
         function corStyle(eq) {
@@ -476,8 +485,19 @@
         });
 
         document.getElementById('btn-aplicar').addEventListener('click', async () => {
+            // Garante que os inputs tenham flushed seus valores antes (importante em mobile)
+            document.activeElement && document.activeElement.blur();
+            console.log('[aplicar] pendentes:', JSON.parse(JSON.stringify(pendentes)));
+            console.log('[aplicar] senha preenchida:', !!pwd.value);
             const keys = Object.keys(pendentes);
-            if (keys.length === 0) { showMsg('Nada pendente.', false); return; }
+            if (keys.length === 0) {
+                showMsg('Nada pendente para aplicar. Digite valores nos inputs antes.', false);
+                return;
+            }
+            if (!pwd.value) {
+                showMsg('Digite a senha admin no topo da pagina.', false);
+                return;
+            }
             let ok = 0, err = 0;
             for (const k of keys) {
                 const [eqId, prId] = k.split('-').map(Number);
