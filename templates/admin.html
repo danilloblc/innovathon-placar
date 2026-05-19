@@ -197,18 +197,22 @@
             return f;
         }
 
-        async function post(url, data) {
+        let _lastError = null;
+        async function post(url, data, silent) {
+            _lastError = null;
             try {
                 const r = await fetch(url, { method: 'POST', body: fd(data) });
                 const d = await r.json().catch(() => ({}));
                 if (!r.ok) {
-                    showMsg('Erro: ' + (d.detail || r.status), false);
+                    _lastError = d.detail || ('HTTP ' + r.status);
+                    if (!silent) showMsg('Erro: ' + _lastError, false);
                     console.error('[POST]', url, r.status, d);
                     return null;
                 }
                 return d;
             } catch (err) {
-                showMsg('Erro de rede: ' + err.message, false);
+                _lastError = 'Erro de rede: ' + err.message;
+                if (!silent) showMsg(_lastError, false);
                 console.error('[POST network]', url, err);
                 return null;
             }
@@ -541,17 +545,24 @@
                 showMsg('Senha admin nao preenchida (campo no topo).', false);
                 return;
             }
-            let ok = 0, err = 0;
+            let ok = 0;
+            const erros = [];
             for (const k of keys) {
                 const [eqId, prId] = k.split('-').map(Number);
+                const eq = equipes.find(e => e.id === eqId);
                 const p = finalPendentes[k];
                 const data = { equipe_id: eqId, prova_id: prId, valor: p.valor };
                 if (p.criterios_valores) data.criterios_valores_json = JSON.stringify(p.criterios_valores);
-                const r = await post('/admin/lancamento', data);
-                if (r) ok++; else err++;
+                const r = await post('/admin/lancamento', data, true);  // silent
+                if (r) ok++;
+                else erros.push(`${eq ? eq.nome : 'Eq'+eqId}: ${_lastError || 'falha'}`);
             }
             pendentes = {};
-            showMsg(`${ok} aplicado(s)${err ? `, ${err} com erro` : ''}.`, err === 0);
+            if (erros.length === 0) {
+                showMsg(`${ok} aplicado(s) com sucesso.`, true);
+            } else {
+                showMsg(`${ok} ok, ${erros.length} erro(s). ${erros.slice(0, 2).join(' | ')}`, false);
+            }
             updatePendentesInfo();
         });
 
@@ -585,7 +596,7 @@
                         <strong class="eq-nome">${eq.nome}</strong>
                         <span class="eq-pts">${eq.pontos || 0} pts</span>
                         <button class="btn small ghost expand-btn" data-eq-toggle="${eq.id}">${isExpanded ? '▾' : '▸'}</button>
-                        <button class="btn small" data-eq-edit="${eq.id}">editar</button>
+                        <button class="btn small primary" data-eq-edit="${eq.id}">editar</button>
                         <button class="btn small danger" data-eq-del="${eq.id}">remover</button>
                     </div>
                     <div class="eq-detalhes" style="${isExpanded ? '' : 'display:none;'}">${detalhesEquipeHtml(eq)}</div>
