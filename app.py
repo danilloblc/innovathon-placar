@@ -16,6 +16,7 @@ Endpoints documentados no README.
 import asyncio
 import json
 import os
+import random
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -86,6 +87,16 @@ def _carregar() -> dict:
     d.setdefault("animacao", DEFAULT_ANIMACAO.copy())
     for k, v in DEFAULT_ANIMACAO.items():
         d["animacao"].setdefault(k, v)
+    # Quiz / buzzer
+    d.setdefault("perguntas", [])  # [{id, categoria, enunciado, resposta}]
+    d.setdefault("quiz", {})
+    q = d["quiz"]
+    q.setdefault("lado1_equipe_id", None)
+    q.setdefault("lado2_equipe_id", None)
+    q.setdefault("pergunta_atual_id", None)
+    q.setdefault("resposta_revelada", False)
+    q.setdefault("modo", "idle")       # idle | teste | pergunta
+    q.setdefault("usadas", [])         # ids de perguntas ja sorteadas
     # Migracao: equipes antigas tinham campo "pontos" - remove (calculado dinamicamente)
     for e in d["equipes"]:
         e.pop("pontos", None)
@@ -107,6 +118,35 @@ def _pontos_equipe(equipe_id: int) -> int:
     return sum(l["valor"] for l in state["lancamentos"] if l["equipe_id"] == equipe_id)
 
 
+def _pergunta_por_id(pid):
+    return next((p for p in state["perguntas"] if p["id"] == pid), None)
+
+
+def _quiz_publico() -> dict:
+    """Estado do quiz para as telas (NAO vaza a resposta antes de revelar,
+    nem o pool completo de perguntas)."""
+    q = state["quiz"]
+    pergunta = _pergunta_por_id(q["pergunta_atual_id"])
+    pergunta_pub = None
+    if pergunta:
+        pergunta_pub = {
+            "id": pergunta["id"],
+            "categoria": pergunta.get("categoria", ""),
+            "enunciado": pergunta.get("enunciado", ""),
+            # resposta so vai pro cliente quando revelada
+            "resposta": pergunta.get("resposta", "") if q["resposta_revelada"] else None,
+        }
+    return {
+        "lado1_equipe_id": q["lado1_equipe_id"],
+        "lado2_equipe_id": q["lado2_equipe_id"],
+        "modo": q["modo"],
+        "resposta_revelada": q["resposta_revelada"],
+        "pergunta": pergunta_pub,
+        "usadas_count": len(q["usadas"]),
+        "total_perguntas": len(state["perguntas"]),
+    }
+
+
 def _state_publico() -> dict:
     """Estado com pontos pre-calculados nas equipes (para o cliente)."""
     return {
@@ -119,6 +159,7 @@ def _state_publico() -> dict:
         "animacao": state["animacao"],
         "buzzer": buzzer,
         "esp32": esp32,
+        "quiz": _quiz_publico(),
     }
 
 
@@ -539,6 +580,188 @@ async def buzzer_ws(websocket: WebSocket):
             esp32["ts"] = datetime.now(timezone.utc).isoformat()
             await broadcast("esp32", esp32)
             print("[WS] ESP32 desconectado")
+
+
+# ====== QUIZ ======
+
+async def _broadcast_quiz():
+    await broadcast("quiz", _quiz_publico())
+
+
+async def _rearmar_buzzer_e_esp32():
+    """Limpa o vencedor e pede pro ESP32 re-armar (reuso da logica do buzzer)."""
+    await _do_reset()
+    if active_esp32_ws is not None:
+        try:
+            await active_esp32_ws.send_json({"type": "reset"})
+        except Exception:
+            pass
+
+
+@app.get("/quiz", response_class=HTMLResponse)
+async def quiz_panel(request: Request):
+    """Painel de controle do quiz (operador)."""
+    return templates.TemplateResponse(
+        "quiz.html",
+        {"request": request, "app_version": APP_VERSION},
+        headers=NO_CACHE,
+    )
+
+
+@app.get("/quiz/perguntas")
+async def quiz_listar_perguntas(password: str = ""):
+    """Lista completa das perguntas (com respostas) - so para o painel admin."""
+    if password != ADMIN_PASSWORD:
+        raise HTTPException(401, "Senha invalida")
+    return {"perguntas": state["perguntas"], "usadas": state["quiz"]["usadas"]}
+
+
+@app.post("/quiz/pergunta")
+async def quiz_pergunta_criar_editar(
+    password: str = Form(...),
+    id: int = Form(0),
+    categoria: str = Form(...),
+    enunciado: str = Form(...),
+    resposta: str = Form(...),
+):
+    _check_auth(password)
+    categoria = categoria.strip()
+    enunciado = enunciado.strip()
+    resposta = resposta.strip()
+    if not enunciado:
+        raise HTTPException(400, "Enunciado obrigatorio")
+    if id == 0:
+        state["perguntas"].append({
+            "id": _next_id(state["perguntas"]),
+            "categoria": categoria or "Geral",
+            "enunciado": enunciado,
+            "resposta": resposta,
+        })
+    else:
+        p = _pergunta_por_id(id)
+        if not p:
+            raise HTTPException(404, "Pergunta nao encontrada")
+        p["categoria"] = categoria or "Geral"
+        p["enunciado"] = enunciado
+        p["resposta"] = resposta
+    _salvar(state)
+    await _broadcast_quiz()
+    return {"ok": True}
+
+
+@app.post("/quiz/pergunta/del")
+async def quiz_pergunta_remover(password: str = Form(...), id: int = Form(...)):
+    _check_auth(password)
+    state["perguntas"] = [p for p in state["perguntas"] if p["id"] != id]
+    state["quiz"]["usadas"] = [u for u in state["quiz"]["usadas"] if u != id]
+    if state["quiz"]["pergunta_atual_id"] == id:
+        state["quiz"]["pergunta_atual_id"] = None
+    _salvar(state)
+    await _broadcast_quiz()
+    return {"ok": True}
+
+
+@app.post("/quiz/importar")
+async def quiz_importar(password: str = Form(...), texto: str = Form(...)):
+    """Importa varias perguntas. Formato por linha: categoria | enunciado | resposta"""
+    _check_auth(password)
+    n = 0
+    for linha in texto.splitlines():
+        linha = linha.strip()
+        if not linha:
+            continue
+        partes = [x.strip() for x in linha.split("|")]
+        if len(partes) < 3:
+            continue
+        cat, enun, resp = partes[0], partes[1], "|".join(partes[2:]).strip()
+        if not enun:
+            continue
+        state["perguntas"].append({
+            "id": _next_id(state["perguntas"]),
+            "categoria": cat or "Geral",
+            "enunciado": enun,
+            "resposta": resp,
+        })
+        n += 1
+    _salvar(state)
+    await _broadcast_quiz()
+    return {"ok": True, "importadas": n}
+
+
+@app.post("/quiz/lados")
+async def quiz_lados(
+    password: str = Form(...),
+    lado1_equipe_id: int = Form(0),
+    lado2_equipe_id: int = Form(0),
+):
+    """Define quais equipes estao em cada lado (sem mexer nas perguntas)."""
+    _check_auth(password)
+    state["quiz"]["lado1_equipe_id"] = lado1_equipe_id or None
+    state["quiz"]["lado2_equipe_id"] = lado2_equipe_id or None
+    _salvar(state)
+    await _broadcast_quiz()
+    return {"ok": True}
+
+
+@app.post("/quiz/proxima")
+async def quiz_proxima(password: str = Form(...), categoria: str = Form("")):
+    """Sorteia a proxima pergunta nao usada (opcionalmente de uma categoria)
+    e limpa o jogador que apertou (mantem a memoria de usadas)."""
+    _check_auth(password)
+    usadas = set(state["quiz"]["usadas"])
+    candidatas = [p for p in state["perguntas"] if p["id"] not in usadas]
+    if categoria:
+        candidatas = [p for p in candidatas if p.get("categoria") == categoria]
+    if not candidatas:
+        raise HTTPException(400, "Nao ha perguntas disponiveis" +
+                            (f" na categoria '{categoria}'" if categoria else "") +
+                            " (todas ja foram usadas).")
+    escolhida = random.choice(candidatas)
+    state["quiz"]["pergunta_atual_id"] = escolhida["id"]
+    state["quiz"]["usadas"].append(escolhida["id"])
+    state["quiz"]["resposta_revelada"] = False
+    state["quiz"]["modo"] = "pergunta"
+    _salvar(state)
+    await _rearmar_buzzer_e_esp32()
+    await _broadcast_quiz()
+    return {"ok": True, "pergunta_id": escolhida["id"]}
+
+
+@app.post("/quiz/revelar")
+async def quiz_revelar(password: str = Form(...), revelar: int = Form(1)):
+    """Mostra/esconde a resposta na tela."""
+    _check_auth(password)
+    state["quiz"]["resposta_revelada"] = bool(revelar)
+    _salvar(state)
+    await _broadcast_quiz()
+    return {"ok": True}
+
+
+@app.post("/quiz/teste")
+async def quiz_teste(password: str = Form(...)):
+    """Modo teste: sem pergunta, so pra testar botoes/equipes/cores."""
+    _check_auth(password)
+    state["quiz"]["modo"] = "teste"
+    state["quiz"]["pergunta_atual_id"] = None
+    state["quiz"]["resposta_revelada"] = False
+    _salvar(state)
+    await _rearmar_buzzer_e_esp32()
+    await _broadcast_quiz()
+    return {"ok": True}
+
+
+@app.post("/quiz/reset-geral")
+async def quiz_reset_geral(password: str = Form(...)):
+    """Apaga a memoria de perguntas usadas e volta pro estado inicial."""
+    _check_auth(password)
+    state["quiz"]["usadas"] = []
+    state["quiz"]["pergunta_atual_id"] = None
+    state["quiz"]["resposta_revelada"] = False
+    state["quiz"]["modo"] = "idle"
+    _salvar(state)
+    await _rearmar_buzzer_e_esp32()
+    await _broadcast_quiz()
+    return {"ok": True}
 
 
 # ====== ANIMACAO ======

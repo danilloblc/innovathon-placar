@@ -154,61 +154,85 @@ header .subtitle { margin: 6px 0 0; color: var(--fg-dim); font-size: 14px; lette
 }
 
 /* ===== TELA DEDICADA DO BUZZER (/buzzer) ===== */
-.buzzer-main {
-    min-height: calc(100vh - 160px);
+.bz-main {
+    min-height: calc(100vh - 150px);
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    transition: background 0.3s ease;
+    gap: 40px;
+    padding: 20px;
 }
-.buzzer-main.jogador-1 { --buzzer-c: #1e88e5; --buzzer-glow: #1e88e5aa; }
-.buzzer-main.jogador-2 { --buzzer-c: #e53935; --buzzer-glow: #e53935aa; }
 
-/* estado idle (aguardando) */
-.buzzer-idle { text-align: center; }
-.buzzer-idle-text {
+/* idle */
+.bz-idle { text-align: center; }
+.bz-idle-text {
     font-size: clamp(48px, 9vw, 110px);
     font-weight: 800;
     color: var(--fg-dim);
     letter-spacing: 8px;
     animation: idle-pulse 2s ease-in-out infinite;
 }
-.buzzer-idle-sub {
-    font-size: 20px;
-    color: var(--border);
-    letter-spacing: 4px;
-    text-transform: uppercase;
-    margin-top: 12px;
+.bz-idle-sub {
+    font-size: 20px; color: var(--border);
+    letter-spacing: 4px; text-transform: uppercase; margin-top: 12px;
 }
 @keyframes idle-pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 0.9; } }
 
-/* estado vencedor */
-.buzzer-winner {
-    flex-direction: column;
-    align-items: center;
+/* pergunta */
+.bz-pergunta { text-align: center; max-width: 1400px; }
+.bz-categoria {
+    display: inline-block;
+    font-size: 18px; letter-spacing: 4px; text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 999px; padding: 4px 18px; margin-bottom: 24px;
+}
+.bz-enunciado {
+    font-size: clamp(28px, 4.5vw, 64px);
+    font-weight: 700; line-height: 1.25; color: var(--fg);
+}
+.bz-resposta {
+    margin-top: 28px;
+    font-size: clamp(20px, 3vw, 40px);
+    font-weight: 700; color: var(--ok);
+    animation: buzzer-in 0.3s ease;
+}
+
+/* duelo de equipes */
+.bz-duelo {
+    display: flex; align-items: center; justify-content: center;
+    gap: 30px; width: 100%; max-width: 1200px;
+}
+.bz-vs { font-size: 32px; font-weight: 800; color: var(--fg-dim); }
+.bz-lado {
+    flex: 1;
+    padding: 30px 20px;
+    border-radius: 18px;
+    border: 4px solid var(--team-c, var(--border));
+    background: linear-gradient(180deg, rgba(20,27,45,0.5), rgba(10,14,26,0.7));
     text-align: center;
-    animation: buzzer-in 0.25s ease;
+    transition: all 0.3s ease;
+    opacity: 0.65;
 }
-@keyframes buzzer-in {
-    from { opacity: 0; transform: scale(1.15); }
-    to { opacity: 1; transform: scale(1); }
+.bz-lado-nome {
+    font-size: clamp(28px, 4vw, 56px);
+    font-weight: 800;
+    color: var(--team-c, var(--fg));
 }
-.buzzer-label {
-    font-size: clamp(20px, 3vw, 36px);
-    letter-spacing: 8px;
-    color: var(--fg-dim);
-    text-transform: uppercase;
-}
-.buzzer-jogador {
-    font-size: clamp(80px, 18vw, 260px);
-    font-weight: 900;
-    line-height: 1;
-    margin: 20px 0;
-    color: var(--buzzer-c, var(--accent));
-    text-shadow: 0 0 60px var(--buzzer-glow, var(--accent-glow));
+/* quando um lado vence, ele estoura e o outro apaga */
+.bz-main.tem-vencedor .bz-lado { opacity: 0.25; }
+.bz-lado.venceu {
+    opacity: 1 !important;
+    transform: scale(1.08);
+    box-shadow: 0 0 70px var(--team-glow, var(--accent-glow));
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--team-c) 25%, var(--bg-card)),
+        color-mix(in srgb, var(--team-c) 10%, var(--bg)));
     animation: buzzer-pulse 0.8s ease-in-out infinite;
 }
-@keyframes buzzer-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+@keyframes buzzer-in { from { opacity: 0; transform: scale(1.15);} to { opacity: 1; transform: scale(1);} }
+@keyframes buzzer-pulse { 0%,100% { transform: scale(1.08);} 50% { transform: scale(1.12);} }
 
 /* ===== FOOTER ===== */
 footer {
@@ -647,3 +671,42 @@ input:focus { outline: none; border-color: var(--accent); }
 .buzzer-admin-status.travado { background: rgba(255,179,0,0.18); color: var(--warn); border-color: var(--warn); }
 
 /* (badge antigo removido - agora usa o mesmo padrao .dot do indicador de conexao) */
+
+/* ===== PAINEL DO QUIZ ===== */
+.quiz-status {
+    padding: 12px 16px; border-radius: 8px; background: var(--bg-row);
+    border: 1px solid var(--border); font-size: 14px; margin-bottom: 12px;
+}
+.quiz-pergunta-box {
+    padding: 16px; border-radius: 8px; margin-bottom: 12px;
+    background: rgba(0,0,0,0.25); border-left: 4px solid var(--accent);
+}
+.quiz-cat { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); }
+.quiz-enun { font-size: 18px; font-weight: 700; margin: 6px 0; }
+.quiz-resp { font-size: 14px; color: var(--ok); }
+
+.form-pergunta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.form-pergunta input { min-width: 120px; }
+
+.cat-grupo { margin-bottom: 14px; }
+.cat-titulo {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--accent); border-bottom: 1px solid var(--border);
+    padding-bottom: 4px; margin-bottom: 6px;
+}
+.pergunta-linha {
+    display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;
+    padding: 8px; background: var(--bg-row); border-radius: 6px; margin-bottom: 5px;
+}
+.pergunta-linha.usada { opacity: 0.5; }
+.pergunta-linha .p-texto { font-size: 13px; }
+.pergunta-linha .p-texto small { color: var(--fg-dim); }
+.badge-usada {
+    font-size: 10px; padding: 2px 8px; border-radius: 999px;
+    background: rgba(255,179,0,0.2); color: var(--warn); text-transform: uppercase;
+}
+textarea {
+    background: #0d1422; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--fg); padding: 8px; font-family: inherit;
+}
+code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 3px; font-size: 11px; }

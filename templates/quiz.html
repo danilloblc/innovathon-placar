@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz - Controle | Innovathon 2026</title>
+    <link rel="stylesheet" href="/static/style.css?v={{ range(100000)|random }}">
+</head>
+<body class="admin">
+    <header>
+        <h1>Controle do Quiz</h1>
+        <p class="subtitle">II Innovathon 2026 · Dinâmica Competitiva</p>
+    </header>
+
+    <main class="admin-main">
+        <section class="card">
+            <h2>Senha</h2>
+            <input type="password" id="pwd" placeholder="Senha admin" autocomplete="current-password">
+            <p style="margin-top: 8px; font-size: 13px;">
+                <span id="esp32-dot" class="dot disconnected"></span>
+                <span id="esp32-text">Dispositivo offline</span>
+                · Tela: <a href="/buzzer" target="_blank">/buzzer</a>
+            </p>
+        </section>
+
+        <!-- ===== CONTROLE AO VIVO ===== -->
+        <section class="card">
+            <h2>Controle ao vivo</h2>
+            <div id="quiz-status" class="quiz-status">—</div>
+
+            <div class="quiz-pergunta-box" id="quiz-pergunta-box" style="display:none;">
+                <div class="quiz-cat" id="quiz-cat"></div>
+                <div class="quiz-enun" id="quiz-enun"></div>
+                <div class="quiz-resp" id="quiz-resp"></div>
+            </div>
+
+            <div class="row" style="gap: 10px; margin: 14px 0; align-items: center;">
+                <select id="cat-sorteio" style="flex: 1;">
+                    <option value="">Qualquer categoria</option>
+                </select>
+                <button id="btn-proxima" class="btn primary" style="flex: 1;">▶ Próxima pergunta</button>
+            </div>
+            <div class="actions">
+                <button id="btn-revelar" class="btn">👁 Revelar resposta</button>
+                <button id="btn-rearmar" class="btn ghost">↺ Re-armar (mesma pergunta)</button>
+                <button id="btn-teste" class="btn ghost">🔧 Modo teste</button>
+            </div>
+        </section>
+
+        <!-- ===== EQUIPES POR LADO ===== -->
+        <section class="card">
+            <h2>Equipes em disputa</h2>
+            <p class="hint">Define qual equipe está em cada botão. Pode trocar livremente (não afeta as perguntas).</p>
+            <div class="row" style="gap: 12px;">
+                <label style="flex: 1;">
+                    <span style="font-size:12px;color:var(--fg-dim);">Lado 1 (botão azul / J1)</span>
+                    <select id="lado1"></select>
+                </label>
+                <label style="flex: 1;">
+                    <span style="font-size:12px;color:var(--fg-dim);">Lado 2 (botão vermelho / J2)</span>
+                    <select id="lado2"></select>
+                </label>
+            </div>
+            <div class="actions"><button id="btn-lados" class="btn primary">Aplicar lados</button></div>
+        </section>
+
+        <!-- ===== RESET GERAL ===== -->
+        <section class="card">
+            <h2>Reset geral</h2>
+            <p class="hint">Apaga a memória de perguntas já sorteadas (começa o quiz do zero). Não apaga as perguntas cadastradas.</p>
+            <div class="actions"><button id="btn-reset-geral" class="btn danger">⚠ Reset geral (zerar usadas)</button></div>
+        </section>
+
+        <!-- ===== GERENCIAR PERGUNTAS ===== -->
+        <section class="card" data-card="perguntas">
+            <h2 class="card-toggle">Perguntas (<span id="contador-perguntas">0</span>) <span class="toggle-icon">▾</span></h2>
+          <div class="card-body">
+            <form id="form-pergunta" class="form-pergunta">
+                <input type="text" name="categoria" placeholder="Categoria/tema" style="flex:1;">
+                <input type="text" name="enunciado" placeholder="Enunciado da pergunta" style="flex:2;" required>
+                <input type="text" name="resposta" placeholder="Resposta" style="flex:1.5;">
+                <button type="submit" class="btn primary">+ Add</button>
+            </form>
+
+            <details style="margin: 10px 0;">
+                <summary style="cursor:pointer; color: var(--accent); font-size: 13px;">Importar em massa</summary>
+                <p class="hint">Uma pergunta por linha, no formato: <code>categoria | enunciado | resposta</code></p>
+                <textarea id="import-texto" rows="6" style="width:100%; font-family:monospace; font-size:12px;"
+                    placeholder="Contábil | O que é um lançamento contábil? | Registro de um fato contábil em débito e crédito&#10;Fiscal | O que é substituição tributária? | Regime onde um contribuinte recolhe o imposto dos demais"></textarea>
+                <div class="actions"><button id="btn-importar" class="btn">Importar</button></div>
+            </details>
+
+            <div id="lista-perguntas"></div>
+          </div>
+        </section>
+
+        <div id="msg" class="msg toast"></div>
+    </main>
+
+    <script>
+        const MY_VERSION = "{{ app_version }}";
+        setInterval(async () => {
+            try { const r = await fetch('/version',{cache:'no-store'}); const d = await r.json();
+                if (d.version && d.version !== MY_VERSION) location.reload(); } catch {}
+        }, 5000);
+
+        const pwd = document.getElementById('pwd');
+        pwd.value = sessionStorage.getItem('placar_pwd') || '';
+        pwd.addEventListener('input', () => sessionStorage.setItem('placar_pwd', pwd.value));
+
+        const msg = document.getElementById('msg');
+        function showMsg(t, ok) { msg.textContent = t; msg.className = 'msg toast ' + (ok?'ok':'err'); setTimeout(()=>msg.className='msg toast', 2500); }
+
+        function fd(extra) { const f = new FormData(); f.append('password', pwd.value); for (const k in extra) f.append(k, extra[k]); return f; }
+        async function post(url, data) {
+            try {
+                const r = await fetch(url, { method:'POST', body: fd(data) });
+                const d = await r.json().catch(()=>({}));
+                if (!r.ok) { showMsg('Erro: ' + (d.detail || r.status), false); return null; }
+                return d;
+            } catch(e) { showMsg('Erro de rede: ' + e.message, false); return null; }
+        }
+
+        // estado
+        let equipes = [], quiz = null, buzzer = null, perguntas = [], usadas = [];
+
+        function equipePorId(id){ return equipes.find(e=>e.id===id); }
+
+        // ===== Cards colapsaveis (so o de perguntas) =====
+        document.querySelectorAll('.card[data-card] .card-toggle').forEach(h => {
+            h.addEventListener('click', () => {
+                const card = h.closest('.card');
+                const col = !card.classList.contains('collapsed');
+                card.classList.toggle('collapsed', col);
+                h.querySelector('.toggle-icon').textContent = col ? '▸' : '▾';
+            });
+        });
+
+        // ===== Selects de equipes/categorias =====
+        function preencheSelectsEquipes() {
+            [document.getElementById('lado1'), document.getElementById('lado2')].forEach((sel, idx) => {
+                const atual = idx === 0 ? (quiz && quiz.lado1_equipe_id) : (quiz && quiz.lado2_equipe_id);
+                sel.innerHTML = '<option value="0">— nenhuma —</option>' +
+                    equipes.map(e => `<option value="${e.id}">${e.nome}</option>`).join('');
+                if (atual) sel.value = atual;
+            });
+        }
+        function preencheCategorias() {
+            const cats = [...new Set(perguntas.map(p => p.categoria))].sort();
+            const sel = document.getElementById('cat-sorteio');
+            const atual = sel.value;
+            sel.innerHTML = '<option value="">Qualquer categoria</option>' +
+                cats.map(c => `<option value="${c}">${c}</option>`).join('');
+            if (atual) sel.value = atual;
+        }
+
+        // ===== Status ao vivo =====
+        function renderStatus() {
+            if (!quiz) return;
+            const st = document.getElementById('quiz-status');
+            const box = document.getElementById('quiz-pergunta-box');
+            const venc = buzzer ? buzzer.vencedor : 0;
+            const eqVenc = venc === 1 ? equipePorId(quiz.lado1_equipe_id)
+                         : venc === 2 ? equipePorId(quiz.lado2_equipe_id) : null;
+
+            let txt = `Modo: <strong>${quiz.modo}</strong> · Perguntas usadas: ${quiz.usadas_count}/${quiz.total_perguntas}`;
+            if (eqVenc) txt += ` · <span style="color:var(--warn)">APERTOU: ${eqVenc.nome}</span>`;
+            else if (quiz.modo !== 'idle') txt += ` · <span style="color:var(--ok)">aguardando buzz</span>`;
+            st.innerHTML = txt;
+
+            // mostra a pergunta atual (operador SEMPRE ve a resposta, vem do fetch completo)
+            const pAtual = quiz.pergunta ? perguntas.find(p => p.id === quiz.pergunta.id) : null;
+            if (pAtual) {
+                box.style.display = 'block';
+                document.getElementById('quiz-cat').textContent = pAtual.categoria || '';
+                document.getElementById('quiz-enun').textContent = pAtual.enunciado || '';
+                document.getElementById('quiz-resp').textContent = 'Resposta: ' + (pAtual.resposta || '—')
+                    + (quiz.resposta_revelada ? '  (revelada na tela)' : '  (oculta)');
+            } else {
+                box.style.display = 'none';
+            }
+
+            // botao revelar reflete o estado
+            document.getElementById('btn-revelar').textContent =
+                quiz.resposta_revelada ? '🙈 Esconder resposta' : '👁 Revelar resposta';
+        }
+
+        function aplicarEsp32(e) {
+            const dot = document.getElementById('esp32-dot'), txt = document.getElementById('esp32-text');
+            if (e && e.online) {
+                const rssi = (e.rssi!=null) ? ` (${e.rssi} dBm)` : '';
+                dot.className = 'dot connected'; txt.textContent = 'Dispositivo online' + rssi;
+            } else { dot.className = 'dot disconnected'; txt.textContent = 'Dispositivo offline'; }
+        }
+
+        // ===== Perguntas (CRUD) =====
+        async function carregarPerguntas() {
+            if (!pwd.value) return;
+            const r = await fetch('/quiz/perguntas?password=' + encodeURIComponent(pwd.value));
+            if (!r.ok) return;
+            const d = await r.json();
+            perguntas = d.perguntas || [];
+            usadas = d.usadas || [];
+            document.getElementById('contador-perguntas').textContent = perguntas.length;
+            preencheCategorias();
+            renderListaPerguntas();
+            renderStatus();
+        }
+
+        function renderListaPerguntas() {
+            const lista = document.getElementById('lista-perguntas');
+            if (perguntas.length === 0) { lista.innerHTML = '<p class="empty">Nenhuma pergunta cadastrada.</p>'; return; }
+            // agrupa por categoria
+            const grupos = {};
+            perguntas.forEach(p => { (grupos[p.categoria] = grupos[p.categoria] || []).push(p); });
+            let html = '';
+            Object.keys(grupos).sort().forEach(cat => {
+                html += `<div class="cat-grupo"><div class="cat-titulo">${cat} (${grupos[cat].length})</div>`;
+                grupos[cat].forEach(p => {
+                    const usada = usadas.includes(p.id);
+                    html += `<div class="pergunta-linha ${usada?'usada':''}">
+                        <div class="p-texto"><strong>${p.enunciado}</strong><br><small>R: ${p.resposta||'—'}</small></div>
+                        ${usada?'<span class="badge-usada">usada</span>':''}
+                        <button class="btn small danger" data-del-perg="${p.id}">×</button>
+                    </div>`;
+                });
+                html += `</div>`;
+            });
+            lista.innerHTML = html;
+        }
+
+        document.getElementById('lista-perguntas').addEventListener('click', async e => {
+            const id = e.target.dataset.delPerg;
+            if (id && confirm('Remover esta pergunta?')) {
+                const r = await post('/quiz/pergunta/del', { id });
+                if (r) { showMsg('Pergunta removida.', true); carregarPerguntas(); }
+            }
+        });
+
+        document.getElementById('form-pergunta').addEventListener('submit', async e => {
+            e.preventDefault();
+            const f = e.target;
+            const r = await post('/quiz/pergunta', { id:0, categoria:f.categoria.value, enunciado:f.enunciado.value, resposta:f.resposta.value });
+            if (r) { showMsg('Pergunta adicionada.', true); f.reset(); carregarPerguntas(); }
+        });
+
+        document.getElementById('btn-importar').addEventListener('click', async () => {
+            const texto = document.getElementById('import-texto').value;
+            if (!texto.trim()) return;
+            const r = await post('/quiz/importar', { texto });
+            if (r) { showMsg(`${r.importadas} pergunta(s) importada(s).`, true); document.getElementById('import-texto').value=''; carregarPerguntas(); }
+        });
+
+        // ===== Controles ao vivo =====
+        document.getElementById('btn-proxima').addEventListener('click', async () => {
+            const cat = document.getElementById('cat-sorteio').value;
+            const r = await post('/quiz/proxima', cat ? { categoria: cat } : {});
+            if (r) showMsg('Nova pergunta sorteada!', true);
+        });
+        document.getElementById('btn-revelar').addEventListener('click', async () => {
+            const revelar = quiz && quiz.resposta_revelada ? 0 : 1;
+            const r = await post('/quiz/revelar', { revelar });
+            if (r) showMsg(revelar ? 'Resposta revelada.' : 'Resposta escondida.', true);
+        });
+        document.getElementById('btn-rearmar').addEventListener('click', async () => {
+            const r = await post('/buzzer/reset', {});
+            if (r) showMsg('Buzzer re-armado (mesma pergunta).', true);
+        });
+        document.getElementById('btn-teste').addEventListener('click', async () => {
+            const r = await post('/quiz/teste', {});
+            if (r) showMsg('Modo teste ativado.', true);
+        });
+        document.getElementById('btn-lados').addEventListener('click', async () => {
+            const r = await post('/quiz/lados', {
+                lado1_equipe_id: document.getElementById('lado1').value || 0,
+                lado2_equipe_id: document.getElementById('lado2').value || 0,
+            });
+            if (r) showMsg('Lados aplicados.', true);
+        });
+        document.getElementById('btn-reset-geral').addEventListener('click', async () => {
+            if (!confirm('Apagar a memória de perguntas usadas e voltar ao início?')) return;
+            const r = await post('/quiz/reset-geral', {});
+            if (r) showMsg('Reset geral feito.', true);
+        });
+
+        // ===== SSE =====
+        function aplicarSnapshot(s) {
+            if (s.equipes) equipes = s.equipes;
+            if (s.quiz) quiz = s.quiz;
+            if (s.buzzer) buzzer = s.buzzer;
+            if (s.esp32) aplicarEsp32(s.esp32);
+            preencheSelectsEquipes();
+            renderStatus();
+        }
+        const es = new EventSource('/stream');
+        es.addEventListener('snapshot', e => aplicarSnapshot(JSON.parse(e.data)));
+        es.addEventListener('state', e => aplicarSnapshot(JSON.parse(e.data)));
+        es.addEventListener('quiz', e => { quiz = JSON.parse(e.data); preencheSelectsEquipes(); renderStatus(); });
+        es.addEventListener('buzzer', e => { buzzer = JSON.parse(e.data); renderStatus(); });
+        es.addEventListener('esp32', e => aplicarEsp32(JSON.parse(e.data)));
+
+        // carrega perguntas quando a senha estiver disponivel
+        if (pwd.value) carregarPerguntas();
+        pwd.addEventListener('change', carregarPerguntas);
+    </script>
+</body>
+</html>

@@ -9,19 +9,32 @@
 <body class="buzzer-screen">
     <header>
         <h1>II INNOVATHON CONTÁGIL 2026</h1>
-        <p class="subtitle">QUEM APERTOU PRIMEIRO</p>
+        <p class="subtitle" id="sub">QUEM APERTOU PRIMEIRO</p>
     </header>
 
-    <main id="buzzer-main" class="buzzer-main">
-        <!-- estado idle (armado) -->
-        <div id="buzzer-idle" class="buzzer-idle">
-            <div class="buzzer-idle-text">AGUARDANDO</div>
-            <div class="buzzer-idle-sub">pressione o botão</div>
+    <main id="bz-main" class="bz-main">
+        <!-- IDLE -->
+        <div id="bz-idle" class="bz-idle">
+            <div class="bz-idle-text">AGUARDANDO</div>
+            <div class="bz-idle-sub">pressione o botão</div>
         </div>
-        <!-- estado vencedor -->
-        <div id="buzzer-winner" class="buzzer-winner" style="display:none;">
-            <div class="buzzer-label">APERTOU PRIMEIRO</div>
-            <div class="buzzer-jogador" id="buzzer-jogador">JOGADOR 1</div>
+
+        <!-- PERGUNTA -->
+        <div id="bz-pergunta" class="bz-pergunta" style="display:none;">
+            <div class="bz-categoria" id="bz-categoria"></div>
+            <div class="bz-enunciado" id="bz-enunciado"></div>
+            <div class="bz-resposta" id="bz-resposta" style="display:none;"></div>
+        </div>
+
+        <!-- DUELO DE EQUIPES (lado1 vs lado2) -->
+        <div id="bz-duelo" class="bz-duelo" style="display:none;">
+            <div class="bz-lado" id="bz-lado1">
+                <div class="bz-lado-nome">—</div>
+            </div>
+            <div class="bz-vs">VS</div>
+            <div class="bz-lado" id="bz-lado2">
+                <div class="bz-lado-nome">—</div>
+            </div>
         </div>
     </main>
 
@@ -43,27 +56,87 @@
             } catch {}
         }, 5000);
 
-        const idleEl = document.getElementById('buzzer-idle');
-        const winnerEl = document.getElementById('buzzer-winner');
-        const jogadorEl = document.getElementById('buzzer-jogador');
-        const mainEl = document.getElementById('buzzer-main');
+        let equipes = [], quiz = null, buzzer = null;
+
+        const elMain = document.getElementById('bz-main');
+        const elIdle = document.getElementById('bz-idle');
+        const elPergunta = document.getElementById('bz-pergunta');
+        const elDuelo = document.getElementById('bz-duelo');
+        const elCategoria = document.getElementById('bz-categoria');
+        const elEnunciado = document.getElementById('bz-enunciado');
+        const elResposta = document.getElementById('bz-resposta');
+        const elLado1 = document.getElementById('bz-lado1');
+        const elLado2 = document.getElementById('bz-lado2');
+        const elSub = document.getElementById('sub');
 
         const conn = document.getElementById('connection');
         const connText = document.getElementById('connection-text');
         const espDot = document.getElementById('esp32-dot');
         const espText = document.getElementById('esp32-text');
 
-        function aplicarBuzzer(b) {
-            if (b && b.vencedor && b.vencedor > 0) {
-                jogadorEl.textContent = 'JOGADOR ' + b.vencedor;
-                mainEl.className = 'buzzer-main jogador-' + b.vencedor;
-                idleEl.style.display = 'none';
-                winnerEl.style.display = 'flex';
+        function equipePorId(id) { return equipes.find(e => e.id === id); }
+        function corClass(eq) { return eq && !eq.cor_hex ? ('team-color-' + (eq.cor_idx || 1)) : ''; }
+        function corStyle(eq) { return eq && eq.cor_hex ? `--team-c:${eq.cor_hex}; --team-glow:${eq.cor_hex}88;` : ''; }
+
+        function pintaLado(elLado, eq, venceu) {
+            elLado.className = 'bz-lado ' + (corClass(eq) || '') + (venceu ? ' venceu' : '');
+            elLado.setAttribute('style', corStyle(eq));
+            elLado.querySelector('.bz-lado-nome').textContent = eq ? eq.nome : '—';
+        }
+
+        function render() {
+            if (!quiz) return;
+            const modo = quiz.modo || 'idle';
+            const venc = buzzer ? buzzer.vencedor : 0;  // 0,1,2
+            const eq1 = equipePorId(quiz.lado1_equipe_id);
+            const eq2 = equipePorId(quiz.lado2_equipe_id);
+
+            // subtitulo conforme modo
+            elSub.textContent = modo === 'teste' ? 'MODO TESTE'
+                              : modo === 'pergunta' ? 'QUEM APERTOU PRIMEIRO'
+                              : 'QUEM APERTOU PRIMEIRO';
+
+            // bloco pergunta
+            if (modo === 'pergunta' && quiz.pergunta) {
+                elPergunta.style.display = 'block';
+                elIdle.style.display = 'none';
+                elCategoria.textContent = quiz.pergunta.categoria || '';
+                elEnunciado.textContent = quiz.pergunta.enunciado || '';
+                if (quiz.resposta_revelada && quiz.pergunta.resposta) {
+                    elResposta.style.display = 'block';
+                    elResposta.textContent = 'Resposta: ' + quiz.pergunta.resposta;
+                } else {
+                    elResposta.style.display = 'none';
+                }
             } else {
-                mainEl.className = 'buzzer-main';
-                winnerEl.style.display = 'none';
-                idleEl.style.display = 'flex';
+                elPergunta.style.display = 'none';
             }
+
+            // duelo de equipes (teste ou pergunta)
+            if (modo === 'teste' || modo === 'pergunta') {
+                elDuelo.style.display = 'flex';
+                elIdle.style.display = 'none';
+                pintaLado(elLado1, eq1, venc === 1);
+                pintaLado(elLado2, eq2, venc === 2);
+            } else {
+                elDuelo.style.display = 'none';
+            }
+
+            // idle puro
+            if (modo === 'idle') {
+                elIdle.style.display = 'flex';
+            }
+
+            // destaque global quando alguem apertou
+            elMain.className = 'bz-main' + (venc ? ' tem-vencedor' : '');
+        }
+
+        function aplicarSnapshot(s) {
+            if (s.equipes) equipes = s.equipes;
+            if (s.quiz) quiz = s.quiz;
+            if (s.buzzer) buzzer = s.buzzer;
+            if (s.esp32) aplicarEsp32(s.esp32);
+            render();
         }
 
         function aplicarEsp32(e) {
@@ -79,20 +152,12 @@
 
         function connect() {
             const es = new EventSource('/stream');
-            es.onopen = () => {
-                conn.className = 'dot connected';
-                connText.textContent = 'Conectado';
-            };
-            es.onerror = () => {
-                conn.className = 'dot disconnected';
-                connText.textContent = 'Reconectando...';
-            };
-            es.addEventListener('snapshot', e => {
-                const s = JSON.parse(e.data);
-                if (s.buzzer) aplicarBuzzer(s.buzzer);
-                if (s.esp32) aplicarEsp32(s.esp32);
-            });
-            es.addEventListener('buzzer', e => aplicarBuzzer(JSON.parse(e.data)));
+            es.onopen = () => { conn.className = 'dot connected'; connText.textContent = 'Conectado'; };
+            es.onerror = () => { conn.className = 'dot disconnected'; connText.textContent = 'Reconectando...'; };
+            es.addEventListener('snapshot', e => aplicarSnapshot(JSON.parse(e.data)));
+            es.addEventListener('state', e => aplicarSnapshot(JSON.parse(e.data)));
+            es.addEventListener('quiz', e => { quiz = JSON.parse(e.data); render(); });
+            es.addEventListener('buzzer', e => { buzzer = JSON.parse(e.data); render(); });
             es.addEventListener('esp32', e => aplicarEsp32(JSON.parse(e.data)));
         }
         connect();
