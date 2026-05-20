@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>II Innovathon - Buzzer</title>
+    <link rel="stylesheet" href="/static/style.css?v={{ range(100000)|random }}">
+</head>
+<body class="buzzer-screen">
+    <header>
+        <h1>II INNOVATHON CONTÁGIL 2026</h1>
+        <p class="subtitle">QUEM APERTOU PRIMEIRO</p>
+    </header>
+
+    <main id="buzzer-main" class="buzzer-main">
+        <!-- estado idle (armado) -->
+        <div id="buzzer-idle" class="buzzer-idle">
+            <div class="buzzer-idle-text">AGUARDANDO</div>
+            <div class="buzzer-idle-sub">pressione o botão</div>
+        </div>
+        <!-- estado vencedor -->
+        <div id="buzzer-winner" class="buzzer-winner" style="display:none;">
+            <div class="buzzer-label">APERTOU PRIMEIRO</div>
+            <div class="buzzer-jogador" id="buzzer-jogador">JOGADOR 1</div>
+        </div>
+    </main>
+
+    <footer>
+        <span id="esp32-dot" class="dot disconnected"></span>
+        <span id="esp32-text">Buzzer offline</span>
+        <span style="margin: 0 10px; color: var(--border);">|</span>
+        <span id="connection" class="dot disconnected"></span>
+        <span id="connection-text">Conectando...</span>
+    </footer>
+
+    <script>
+        const MY_VERSION = "{{ app_version }}";
+        setInterval(async () => {
+            try {
+                const r = await fetch('/version', { cache: 'no-store' });
+                const d = await r.json();
+                if (d.version && d.version !== MY_VERSION) location.reload();
+            } catch {}
+        }, 5000);
+
+        const idleEl = document.getElementById('buzzer-idle');
+        const winnerEl = document.getElementById('buzzer-winner');
+        const jogadorEl = document.getElementById('buzzer-jogador');
+        const mainEl = document.getElementById('buzzer-main');
+
+        const conn = document.getElementById('connection');
+        const connText = document.getElementById('connection-text');
+        const espDot = document.getElementById('esp32-dot');
+        const espText = document.getElementById('esp32-text');
+
+        function aplicarBuzzer(b) {
+            if (b && b.vencedor && b.vencedor > 0) {
+                jogadorEl.textContent = 'JOGADOR ' + b.vencedor;
+                mainEl.className = 'buzzer-main jogador-' + b.vencedor;
+                idleEl.style.display = 'none';
+                winnerEl.style.display = 'flex';
+            } else {
+                mainEl.className = 'buzzer-main';
+                winnerEl.style.display = 'none';
+                idleEl.style.display = 'flex';
+            }
+        }
+
+        function aplicarEsp32(e) {
+            if (e && e.online) {
+                const rssi = (e.rssi !== null && e.rssi !== undefined) ? ` (${e.rssi} dBm)` : '';
+                espDot.className = 'dot connected';
+                espText.textContent = 'Buzzer online' + rssi;
+            } else {
+                espDot.className = 'dot disconnected';
+                espText.textContent = 'Buzzer offline';
+            }
+        }
+
+        function connect() {
+            const es = new EventSource('/stream');
+            es.onopen = () => {
+                conn.className = 'dot connected';
+                connText.textContent = 'Conectado';
+            };
+            es.onerror = () => {
+                conn.className = 'dot disconnected';
+                connText.textContent = 'Reconectando...';
+            };
+            es.addEventListener('snapshot', e => {
+                const s = JSON.parse(e.data);
+                if (s.buzzer) aplicarBuzzer(s.buzzer);
+                if (s.esp32) aplicarEsp32(s.esp32);
+            });
+            es.addEventListener('buzzer', e => aplicarBuzzer(JSON.parse(e.data)));
+            es.addEventListener('esp32', e => aplicarEsp32(JSON.parse(e.data)));
+        }
+        connect();
+    </script>
+</body>
+</html>

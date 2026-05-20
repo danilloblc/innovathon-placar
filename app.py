@@ -180,6 +180,16 @@ async def admin(request: Request):
     )
 
 
+@app.get("/buzzer", response_class=HTMLResponse)
+async def buzzer_screen(request: Request):
+    """Tela dedicada do buzzer (separada do placar principal)."""
+    return templates.TemplateResponse(
+        "buzzer.html",
+        {"request": request, "app_version": APP_VERSION},
+        headers=NO_CACHE,
+    )
+
+
 @app.get("/version")
 async def version():
     return {"version": APP_VERSION}

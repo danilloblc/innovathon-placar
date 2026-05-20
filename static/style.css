@@ -153,54 +153,62 @@ header .subtitle { margin: 6px 0 0; color: var(--fg-dim); font-size: 14px; lette
     letter-spacing: 2px;
 }
 
-/* ===== BUZZER OVERLAY ===== */
-.buzzer-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 5000;
+/* ===== TELA DEDICADA DO BUZZER (/buzzer) ===== */
+.buzzer-main {
+    min-height: calc(100vh - 160px);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.82);
-    backdrop-filter: blur(6px);
+    transition: background 0.3s ease;
+}
+.buzzer-main.jogador-1 { --buzzer-c: #1e88e5; --buzzer-glow: #1e88e5aa; }
+.buzzer-main.jogador-2 { --buzzer-c: #e53935; --buzzer-glow: #e53935aa; }
+
+/* estado idle (aguardando) */
+.buzzer-idle { text-align: center; }
+.buzzer-idle-text {
+    font-size: clamp(48px, 9vw, 110px);
+    font-weight: 800;
+    color: var(--fg-dim);
+    letter-spacing: 8px;
+    animation: idle-pulse 2s ease-in-out infinite;
+}
+.buzzer-idle-sub {
+    font-size: 20px;
+    color: var(--border);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-top: 12px;
+}
+@keyframes idle-pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 0.9; } }
+
+/* estado vencedor */
+.buzzer-winner {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
     animation: buzzer-in 0.25s ease;
 }
 @keyframes buzzer-in {
-    from { opacity: 0; transform: scale(1.1); }
+    from { opacity: 0; transform: scale(1.15); }
     to { opacity: 1; transform: scale(1); }
 }
-.buzzer-card {
-    text-align: center;
-    padding: 60px 80px;
-    border-radius: 24px;
-    border: 4px solid var(--buzzer-c, var(--accent));
-    box-shadow: 0 0 80px var(--buzzer-glow, var(--accent-glow));
-    background: linear-gradient(180deg, rgba(20,27,45,0.6), rgba(10,14,26,0.9));
-}
 .buzzer-label {
-    font-size: 28px;
-    letter-spacing: 6px;
+    font-size: clamp(20px, 3vw, 36px);
+    letter-spacing: 8px;
     color: var(--fg-dim);
     text-transform: uppercase;
 }
 .buzzer-jogador {
-    font-size: clamp(64px, 14vw, 180px);
+    font-size: clamp(80px, 18vw, 260px);
     font-weight: 900;
-    line-height: 1.05;
-    margin: 16px 0;
+    line-height: 1;
+    margin: 20px 0;
     color: var(--buzzer-c, var(--accent));
-    text-shadow: 0 0 40px var(--buzzer-glow, var(--accent-glow));
+    text-shadow: 0 0 60px var(--buzzer-glow, var(--accent-glow));
     animation: buzzer-pulse 0.8s ease-in-out infinite;
 }
-@keyframes buzzer-pulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.04); }
-}
-.buzzer-tempo { font-size: 24px; color: var(--fg-dim); }
-
-/* cores por jogador */
-.buzzer-overlay.jogador-1 { --buzzer-c: #1e88e5; --buzzer-glow: #1e88e5aa; }
-.buzzer-overlay.jogador-2 { --buzzer-c: #e53935; --buzzer-glow: #e53935aa; }
+@keyframes buzzer-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
 
 /* ===== FOOTER ===== */
 footer {
@@ -638,15 +646,4 @@ input:focus { outline: none; border-color: var(--accent); }
 .buzzer-admin-status.armado { background: rgba(76,175,80,0.18); color: var(--ok); border-color: var(--ok); }
 .buzzer-admin-status.travado { background: rgba(255,179,0,0.18); color: var(--warn); border-color: var(--warn); }
 
-/* ===== ESP32 STATUS BADGE ===== */
-.esp32-badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 600;
-    border: 1px solid var(--border);
-}
-.esp32-badge.online { background: rgba(76,175,80,0.18); color: var(--ok); border-color: var(--ok); }
-.esp32-badge.offline { background: rgba(239,83,80,0.15); color: var(--err); border-color: var(--err); }
-footer .esp32-badge { margin-right: 12px; }
+/* (badge antigo removido - agora usa o mesmo padrao .dot do indicador de conexao) */

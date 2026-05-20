@@ -14,17 +14,7 @@
 
     <main id="ranking" class="ranking"></main>
 
-    <!-- Overlay do buzzer (quem apertou primeiro) -->
-    <div id="buzzer-overlay" class="buzzer-overlay" style="display:none;">
-        <div class="buzzer-card">
-            <div class="buzzer-label">APERTOU PRIMEIRO</div>
-            <div class="buzzer-jogador" id="buzzer-jogador">JOGADOR 1</div>
-            <div class="buzzer-tempo" id="buzzer-tempo"></div>
-        </div>
-    </div>
-
     <footer>
-        <span id="esp32-status" class="esp32-badge offline">🔴 Buzzer offline</span>
         <span id="connection" class="dot disconnected"></span>
         <span id="connection-text">Conectando...</span>
     </footer>
@@ -189,38 +179,7 @@
             provas = s.provas || [];
             lancamentos = s.lancamentos || [];
             if (s.animacao) anim = Object.assign(anim, s.animacao);
-            if (s.buzzer) aplicarBuzzer(s.buzzer);
-            if (s.esp32) aplicarEsp32(s.esp32);
             render();
-        }
-
-        // ===== Status ESP32 =====
-        const esp32Badge = document.getElementById('esp32-status');
-        function aplicarEsp32(e) {
-            if (e && e.online) {
-                const rssi = (e.rssi !== null && e.rssi !== undefined) ? ` · ${e.rssi} dBm` : '';
-                esp32Badge.textContent = `🟢 Buzzer online${rssi}`;
-                esp32Badge.className = 'esp32-badge online';
-            } else {
-                esp32Badge.textContent = '🔴 Buzzer offline';
-                esp32Badge.className = 'esp32-badge offline';
-            }
-        }
-
-        // ===== BUZZER overlay =====
-        const buzzerOverlay = document.getElementById('buzzer-overlay');
-        const buzzerJogador = document.getElementById('buzzer-jogador');
-        const buzzerTempo = document.getElementById('buzzer-tempo');
-
-        function aplicarBuzzer(b) {
-            if (b && b.vencedor && b.vencedor > 0) {
-                buzzerJogador.textContent = 'JOGADOR ' + b.vencedor;
-                buzzerOverlay.className = 'buzzer-overlay jogador-' + b.vencedor;
-                buzzerTempo.textContent = '';  // tempo opcional; pode exibir b.tempo_us depois
-                buzzerOverlay.style.display = 'flex';
-            } else {
-                buzzerOverlay.style.display = 'none';
-            }
         }
 
         function flashRow(id) {
@@ -269,8 +228,6 @@
             es.addEventListener('animacao', e => {
                 anim = Object.assign(anim, JSON.parse(e.data));
             });
-            es.addEventListener('buzzer', e => aplicarBuzzer(JSON.parse(e.data)));
-            es.addEventListener('esp32', e => aplicarEsp32(JSON.parse(e.data)));
         }
 
         connect();
