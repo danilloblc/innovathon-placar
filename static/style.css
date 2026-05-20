@@ -153,6 +153,55 @@ header .subtitle { margin: 6px 0 0; color: var(--fg-dim); font-size: 14px; lette
     letter-spacing: 2px;
 }
 
+/* ===== BUZZER OVERLAY ===== */
+.buzzer-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.82);
+    backdrop-filter: blur(6px);
+    animation: buzzer-in 0.25s ease;
+}
+@keyframes buzzer-in {
+    from { opacity: 0; transform: scale(1.1); }
+    to { opacity: 1; transform: scale(1); }
+}
+.buzzer-card {
+    text-align: center;
+    padding: 60px 80px;
+    border-radius: 24px;
+    border: 4px solid var(--buzzer-c, var(--accent));
+    box-shadow: 0 0 80px var(--buzzer-glow, var(--accent-glow));
+    background: linear-gradient(180deg, rgba(20,27,45,0.6), rgba(10,14,26,0.9));
+}
+.buzzer-label {
+    font-size: 28px;
+    letter-spacing: 6px;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+}
+.buzzer-jogador {
+    font-size: clamp(64px, 14vw, 180px);
+    font-weight: 900;
+    line-height: 1.05;
+    margin: 16px 0;
+    color: var(--buzzer-c, var(--accent));
+    text-shadow: 0 0 40px var(--buzzer-glow, var(--accent-glow));
+    animation: buzzer-pulse 0.8s ease-in-out infinite;
+}
+@keyframes buzzer-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+}
+.buzzer-tempo { font-size: 24px; color: var(--fg-dim); }
+
+/* cores por jogador */
+.buzzer-overlay.jogador-1 { --buzzer-c: #1e88e5; --buzzer-glow: #1e88e5aa; }
+.buzzer-overlay.jogador-2 { --buzzer-c: #e53935; --buzzer-glow: #e53935aa; }
+
 /* ===== FOOTER ===== */
 footer {
     position: fixed;
@@ -574,3 +623,17 @@ input:focus { outline: none; border-color: var(--accent); }
 }
 
 .empty { text-align: center; color: var(--fg-dim); padding: 20px; font-size: 14px; }
+
+/* ===== BUZZER ADMIN STATUS ===== */
+.buzzer-admin-status {
+    padding: 14px 18px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 15px;
+    text-align: center;
+    background: var(--bg-row);
+    border: 1px solid var(--border);
+    margin-bottom: 12px;
+}
+.buzzer-admin-status.armado { background: rgba(76,175,80,0.18); color: var(--ok); border-color: var(--ok); }
+.buzzer-admin-status.travado { background: rgba(255,179,0,0.18); color: var(--warn); border-color: var(--warn); }

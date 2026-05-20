@@ -79,6 +79,18 @@
           </div>
         </section>
 
+        <!-- ===== BUZZER ===== -->
+        <section class="card" data-card="buzzer">
+            <h2 class="card-toggle">Buzzer (ESP32) <span class="toggle-icon">▾</span></h2>
+          <div class="card-body">
+            <p class="hint">Integracao com o dispositivo fisico "quem apertou primeiro".</p>
+            <div id="buzzer-status" class="buzzer-admin-status">—</div>
+            <div class="actions">
+                <button id="btn-buzzer-reset" class="btn primary">Resetar / Armar buzzer</button>
+            </div>
+          </div>
+        </section>
+
         <!-- ===== TEMPOS DE ANIMACAO ===== -->
         <section class="card" data-card="animacao">
             <h2 class="card-toggle">Tempos de animacao (ms) <span class="toggle-icon">▾</span></h2>
@@ -791,12 +803,33 @@
             else showMsg('Erro ao salvar tempos.', false);
         });
 
+        // ===== BUZZER =====
+        const buzzerStatus = document.getElementById('buzzer-status');
+        function aplicarBuzzer(b) {
+            if (!b) return;
+            if (b.vencedor > 0) {
+                buzzerStatus.textContent = `TRAVADO — Jogador ${b.vencedor} apertou primeiro`;
+                buzzerStatus.className = 'buzzer-admin-status travado';
+            } else if (b.armado) {
+                buzzerStatus.textContent = 'ARMADO — aguardando alguem apertar';
+                buzzerStatus.className = 'buzzer-admin-status armado';
+            } else {
+                buzzerStatus.textContent = 'inativo';
+                buzzerStatus.className = 'buzzer-admin-status';
+            }
+        }
+        document.getElementById('btn-buzzer-reset').addEventListener('click', async () => {
+            const r = await post('/buzzer/reset', {});  // usa senha admin
+            if (r) showMsg('Buzzer resetado/armado.', true);
+        });
+
         // ===== SSE =====
         function applySnapshot(s) {
             equipes = s.equipes || [];
             provas = s.provas || [];
             lancamentos = s.lancamentos || [];
             setAnimInputs(s.animacao);
+            aplicarBuzzer(s.buzzer);
             renderProvas();
             renderEquipes();
             // re-render lancar area mantendo pendentes
@@ -807,6 +840,7 @@
         es.addEventListener('snapshot', e => applySnapshot(JSON.parse(e.data)));
         es.addEventListener('state', e => applySnapshot(JSON.parse(e.data)));
         es.addEventListener('animacao', e => setAnimInputs(JSON.parse(e.data)));
+        es.addEventListener('buzzer', e => aplicarBuzzer(JSON.parse(e.data)));
     </script>
 </body>
 </html>

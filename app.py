@@ -32,9 +32,18 @@ DATA_FILE = BASE / "data" / "equipes.json"
 DATA_FILE.parent.mkdir(exist_ok=True)
 
 ADMIN_PASSWORD = os.environ.get("PLACAR_ADMIN_PASSWORD", "innovathon2026")
+# Token compartilhado com o ESP32 (buzzer). Sobrescreva via env no Coolify.
+BUZZER_TOKEN = os.environ.get("BUZZER_TOKEN", "buzzer-innovathon-2026")
 APP_VERSION = str(int(time.time()))
 
 DEFAULT_ANIMACAO = {"count_ms": 500, "reorder_ms": 650, "flash_ms": 1200}
+
+# Estado do buzzer (em memoria, efemero - reseta a cada rodada).
+#   vencedor: 0 = ninguem, 1 = jogador 1, 2 = jogador 2
+#   tempo_us: timestamp em microssegundos (do ESP32) de quando apertou
+#   armado:   True = aceita buzz; False = ja tem vencedor (travado)
+#   seq:      incrementa a cada mudanca (ESP32 detecta reset via mudanca de seq)
+buzzer = {"vencedor": 0, "tempo_us": 0, "armado": True, "seq": 0, "ts": None}
 
 
 def _provas_padrao() -> list[dict]:
@@ -100,6 +109,7 @@ def _state_publico() -> dict:
         "provas": state["provas"],
         "lancamentos": state["lancamentos"],
         "animacao": state["animacao"],
+        "buzzer": buzzer,
     }
 
 
@@ -376,6 +386,51 @@ async def reset(password: str = Form(...)):
     state["lancamentos"] = []
     _salvar(state)
     await broadcast("state", _state_publico())
+    return {"ok": True}
+
+
+# ====== BUZZER (integracao ESP32) ======
+
+@app.get("/buzzer/state")
+async def buzzer_state():
+    """Estado leve para o ESP32 fazer polling (detectar reset via 'seq')."""
+    return buzzer
+
+
+@app.post("/buzzer/buzz")
+async def buzzer_buzz(
+    token: str = Form(...),
+    player: int = Form(...),
+    tempo_us: int = Form(0),
+):
+    """Recebe o buzz do ESP32. Quem chega primeiro trava (armado=False)."""
+    if token != BUZZER_TOKEN:
+        raise HTTPException(401, "Token invalido")
+    if player not in (1, 2):
+        raise HTTPException(400, "player deve ser 1 ou 2")
+    if not buzzer["armado"]:
+        # Ja tem vencedor - ignora (o ESP32 ja decidiu localmente de qualquer forma)
+        return {"ok": False, "reason": "ja travado", "vencedor": buzzer["vencedor"]}
+    buzzer["vencedor"] = player
+    buzzer["tempo_us"] = tempo_us
+    buzzer["armado"] = False
+    buzzer["seq"] += 1
+    buzzer["ts"] = datetime.now(timezone.utc).isoformat()
+    await broadcast("buzzer", buzzer)
+    return {"ok": True, "vencedor": player}
+
+
+@app.post("/buzzer/reset")
+async def buzzer_reset(token: str = Form(""), password: str = Form("")):
+    """Re-arma o buzzer. Aceita token (do ESP32) OU senha admin (da tela)."""
+    if token != BUZZER_TOKEN and password != ADMIN_PASSWORD:
+        raise HTTPException(401, "Auth invalida (token ou senha)")
+    buzzer["vencedor"] = 0
+    buzzer["tempo_us"] = 0
+    buzzer["armado"] = True
+    buzzer["seq"] += 1
+    buzzer["ts"] = datetime.now(timezone.utc).isoformat()
+    await broadcast("buzzer", buzzer)
     return {"ok": True}
 
 

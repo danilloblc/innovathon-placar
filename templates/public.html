@@ -14,6 +14,15 @@
 
     <main id="ranking" class="ranking"></main>
 
+    <!-- Overlay do buzzer (quem apertou primeiro) -->
+    <div id="buzzer-overlay" class="buzzer-overlay" style="display:none;">
+        <div class="buzzer-card">
+            <div class="buzzer-label">APERTOU PRIMEIRO</div>
+            <div class="buzzer-jogador" id="buzzer-jogador">JOGADOR 1</div>
+            <div class="buzzer-tempo" id="buzzer-tempo"></div>
+        </div>
+    </div>
+
     <footer>
         <span id="connection" class="dot disconnected"></span>
         <span id="connection-text">Conectando...</span>
@@ -179,7 +188,24 @@
             provas = s.provas || [];
             lancamentos = s.lancamentos || [];
             if (s.animacao) anim = Object.assign(anim, s.animacao);
+            if (s.buzzer) aplicarBuzzer(s.buzzer);
             render();
+        }
+
+        // ===== BUZZER overlay =====
+        const buzzerOverlay = document.getElementById('buzzer-overlay');
+        const buzzerJogador = document.getElementById('buzzer-jogador');
+        const buzzerTempo = document.getElementById('buzzer-tempo');
+
+        function aplicarBuzzer(b) {
+            if (b && b.vencedor && b.vencedor > 0) {
+                buzzerJogador.textContent = 'JOGADOR ' + b.vencedor;
+                buzzerOverlay.className = 'buzzer-overlay jogador-' + b.vencedor;
+                buzzerTempo.textContent = '';  // tempo opcional; pode exibir b.tempo_us depois
+                buzzerOverlay.style.display = 'flex';
+            } else {
+                buzzerOverlay.style.display = 'none';
+            }
         }
 
         function flashRow(id) {
@@ -228,6 +254,7 @@
             es.addEventListener('animacao', e => {
                 anim = Object.assign(anim, JSON.parse(e.data));
             });
+            es.addEventListener('buzzer', e => aplicarBuzzer(JSON.parse(e.data)));
         }
 
         connect();
