@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -44,6 +44,14 @@ DEFAULT_ANIMACAO = {"count_ms": 500, "reorder_ms": 650, "flash_ms": 1200}
 #   armado:   True = aceita buzz; False = ja tem vencedor (travado)
 #   seq:      incrementa a cada mudanca (ESP32 detecta reset via mudanca de seq)
 buzzer = {"vencedor": 0, "tempo_us": 0, "armado": True, "seq": 0, "ts": None}
+
+# Estado de presenca do ESP32 (via WebSocket).
+#   online: conexao WS viva
+#   rssi:   forca do sinal WiFi (dBm) reportada nos pings
+esp32 = {"online": False, "rssi": None, "ts": None}
+
+# Referencia da conexao WebSocket ativa do ESP32 (so 1 dispositivo).
+active_esp32_ws: "WebSocket | None" = None
 
 
 def _provas_padrao() -> list[dict]:
@@ -110,6 +118,7 @@ def _state_publico() -> dict:
         "lancamentos": state["lancamentos"],
         "animacao": state["animacao"],
         "buzzer": buzzer,
+        "esp32": esp32,
     }
 
 
@@ -420,18 +429,106 @@ async def buzzer_buzz(
     return {"ok": True, "vencedor": player}
 
 
-@app.post("/buzzer/reset")
-async def buzzer_reset(token: str = Form(""), password: str = Form("")):
-    """Re-arma o buzzer. Aceita token (do ESP32) OU senha admin (da tela)."""
-    if token != BUZZER_TOKEN and password != ADMIN_PASSWORD:
-        raise HTTPException(401, "Auth invalida (token ou senha)")
+async def _do_reset():
     buzzer["vencedor"] = 0
     buzzer["tempo_us"] = 0
     buzzer["armado"] = True
     buzzer["seq"] += 1
     buzzer["ts"] = datetime.now(timezone.utc).isoformat()
     await broadcast("buzzer", buzzer)
+
+
+@app.post("/buzzer/reset")
+async def buzzer_reset(token: str = Form(""), password: str = Form("")):
+    """Re-arma o buzzer. Aceita token (do ESP32) OU senha admin (da tela).
+    Tambem empurra o comando de reset pro ESP32 via WebSocket (re-arma na hora)."""
+    if token != BUZZER_TOKEN and password != ADMIN_PASSWORD:
+        raise HTTPException(401, "Auth invalida (token ou senha)")
+    await _do_reset()
+    # empurra pro ESP32 re-armar localmente
+    if active_esp32_ws is not None:
+        try:
+            await active_esp32_ws.send_json({"type": "reset"})
+        except Exception:
+            pass
     return {"ok": True}
+
+
+@app.websocket("/buzzer/ws")
+async def buzzer_ws(websocket: WebSocket):
+    """Conexao persistente com o ESP32.
+
+    ESP32 -> servidor:
+      {"type":"hello","token":"...","rssi":-55}
+      {"type":"buzz","player":1,"tempo_us":12345}
+      {"type":"reset"}
+      {"type":"ping","rssi":-55}
+    servidor -> ESP32:
+      {"type":"welcome","armado":true}
+      {"type":"reset"}
+    """
+    global active_esp32_ws
+    await websocket.accept()
+    authed = False
+    try:
+        while True:
+            # timeout: se o ESP32 nao mandar nada (nem ping) por 12s, assume morto
+            try:
+                data = await asyncio.wait_for(websocket.receive_json(), timeout=12)
+            except asyncio.TimeoutError:
+                break
+            except Exception:
+                break
+
+            tipo = data.get("type")
+
+            if tipo == "hello":
+                if data.get("token") != BUZZER_TOKEN:
+                    await websocket.close(code=4001)
+                    return
+                authed = True
+                active_esp32_ws = websocket
+                esp32["online"] = True
+                esp32["rssi"] = data.get("rssi")
+                esp32["ts"] = datetime.now(timezone.utc).isoformat()
+                await broadcast("esp32", esp32)
+                await websocket.send_json({"type": "welcome", "armado": buzzer["armado"]})
+                print(f"[WS] ESP32 conectado (rssi={esp32['rssi']})")
+                continue
+
+            if not authed:
+                continue
+
+            if tipo == "buzz":
+                player = data.get("player")
+                if buzzer["armado"] and player in (1, 2):
+                    buzzer["vencedor"] = player
+                    buzzer["tempo_us"] = data.get("tempo_us", 0)
+                    buzzer["armado"] = False
+                    buzzer["seq"] += 1
+                    buzzer["ts"] = datetime.now(timezone.utc).isoformat()
+                    await broadcast("buzzer", buzzer)
+
+            elif tipo == "reset":
+                await _do_reset()
+
+            elif tipo == "ping":
+                esp32["online"] = True
+                esp32["rssi"] = data.get("rssi")
+                esp32["ts"] = datetime.now(timezone.utc).isoformat()
+                await broadcast("esp32", esp32)
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"[WS] erro: {e}")
+    finally:
+        if active_esp32_ws is websocket:
+            active_esp32_ws = None
+            esp32["online"] = False
+            esp32["ts"] = datetime.now(timezone.utc).isoformat()
+            await broadcast("esp32", esp32)
+            print("[WS] ESP32 desconectado")
 
 
 # ====== ANIMACAO ======

@@ -637,3 +637,16 @@ input:focus { outline: none; border-color: var(--accent); }
 }
 .buzzer-admin-status.armado { background: rgba(76,175,80,0.18); color: var(--ok); border-color: var(--ok); }
 .buzzer-admin-status.travado { background: rgba(255,179,0,0.18); color: var(--warn); border-color: var(--warn); }
+
+/* ===== ESP32 STATUS BADGE ===== */
+.esp32-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+}
+.esp32-badge.online { background: rgba(76,175,80,0.18); color: var(--ok); border-color: var(--ok); }
+.esp32-badge.offline { background: rgba(239,83,80,0.15); color: var(--err); border-color: var(--err); }
+footer .esp32-badge { margin-right: 12px; }

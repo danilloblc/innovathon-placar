@@ -84,6 +84,7 @@
             <h2 class="card-toggle">Buzzer (ESP32) <span class="toggle-icon">▾</span></h2>
           <div class="card-body">
             <p class="hint">Integracao com o dispositivo fisico "quem apertou primeiro".</p>
+            <div id="esp32-status" class="esp32-badge offline" style="margin-bottom: 10px;">🔴 Dispositivo offline</div>
             <div id="buzzer-status" class="buzzer-admin-status">—</div>
             <div class="actions">
                 <button id="btn-buzzer-reset" class="btn primary">Resetar / Armar buzzer</button>
@@ -823,6 +824,18 @@
             if (r) showMsg('Buzzer resetado/armado.', true);
         });
 
+        const esp32Badge = document.getElementById('esp32-status');
+        function aplicarEsp32(e) {
+            if (e && e.online) {
+                const rssi = (e.rssi !== null && e.rssi !== undefined) ? ` · ${e.rssi} dBm` : '';
+                esp32Badge.textContent = `🟢 Dispositivo online${rssi}`;
+                esp32Badge.className = 'esp32-badge online';
+            } else {
+                esp32Badge.textContent = '🔴 Dispositivo offline';
+                esp32Badge.className = 'esp32-badge offline';
+            }
+        }
+
         // ===== SSE =====
         function applySnapshot(s) {
             equipes = s.equipes || [];
@@ -830,6 +843,7 @@
             lancamentos = s.lancamentos || [];
             setAnimInputs(s.animacao);
             aplicarBuzzer(s.buzzer);
+            aplicarEsp32(s.esp32);
             renderProvas();
             renderEquipes();
             // re-render lancar area mantendo pendentes
@@ -841,6 +855,7 @@
         es.addEventListener('state', e => applySnapshot(JSON.parse(e.data)));
         es.addEventListener('animacao', e => setAnimInputs(JSON.parse(e.data)));
         es.addEventListener('buzzer', e => aplicarBuzzer(JSON.parse(e.data)));
+        es.addEventListener('esp32', e => aplicarEsp32(JSON.parse(e.data)));
     </script>
 </body>
 </html>
