@@ -54,6 +54,14 @@ esp32 = {"online": False, "rssi": None, "ts": None}
 # Referencia da conexao WebSocket ativa do ESP32 (so 1 dispositivo).
 active_esp32_ws: "WebSocket | None" = None
 
+# Timer de resposta (em memoria, efemero).
+#   ativo:    contagem rolando
+#   restante: segundos restantes
+#   ciclo:    1 (vez de quem apertou) ou 2 (vez do outro time)
+#   lado_vez: 1 ou 2 = qual lado tem a vez agora
+timer = {"ativo": False, "restante": 0, "ciclo": 0, "lado_vez": 0}
+timer_task: "asyncio.Task | None" = None
+
 
 def _provas_padrao() -> list[dict]:
     """Provas conforme edital INNOVATHON 2026."""
@@ -97,6 +105,7 @@ def _carregar() -> dict:
     q.setdefault("resposta_revelada", False)
     q.setdefault("modo", "idle")       # idle | teste | pergunta
     q.setdefault("usadas", [])         # ids de perguntas ja sorteadas
+    q.setdefault("timer_duracao", 10)  # segundos por chance de resposta
     # Migracao: equipes antigas tinham campo "pontos" - remove (calculado dinamicamente)
     for e in d["equipes"]:
         e.pop("pontos", None)
@@ -144,6 +153,7 @@ def _quiz_publico() -> dict:
         "pergunta": pergunta_pub,
         "usadas_count": len(q["usadas"]),
         "total_perguntas": len(state["perguntas"]),
+        "timer_duracao": q.get("timer_duracao", 10),
     }
 
 
@@ -160,6 +170,7 @@ def _state_publico() -> dict:
         "buzzer": buzzer,
         "esp32": esp32,
         "quiz": _quiz_publico(),
+        "timer": timer,
     }
 
 
@@ -471,16 +482,62 @@ async def buzzer_buzz(
     if not buzzer["armado"]:
         # Ja tem vencedor - ignora (o ESP32 ja decidiu localmente de qualquer forma)
         return {"ok": False, "reason": "ja travado", "vencedor": buzzer["vencedor"]}
+    await registrar_buzz(player, tempo_us)
+    return {"ok": True, "vencedor": player}
+
+
+async def parar_timer():
+    """Cancela e zera o timer."""
+    global timer_task
+    if timer_task is not None and not timer_task.done():
+        timer_task.cancel()
+    timer_task = None
+    timer.update(ativo=False, restante=0, ciclo=0, lado_vez=0)
+    await broadcast("timer", timer)
+
+
+async def _loop_timer(venc: int):
+    """Roda 2 ciclos: vez de quem apertou, depois vez do outro. Depois para em 0."""
+    dur = int(state["quiz"].get("timer_duracao", 10))
+    outro = 2 if venc == 1 else 1
+    try:
+        for ciclo, lado in ((1, venc), (2, outro)):
+            timer.update(ativo=True, ciclo=ciclo, lado_vez=lado)
+            for s in range(dur, -1, -1):
+                timer["restante"] = s
+                await broadcast("timer", timer)
+                if s > 0:
+                    await asyncio.sleep(1)
+        timer.update(ativo=False, restante=0, ciclo=0, lado_vez=0)
+        await broadcast("timer", timer)
+    except asyncio.CancelledError:
+        pass
+
+
+def iniciar_timer(venc: int):
+    global timer_task
+    if timer_task is not None and not timer_task.done():
+        timer_task.cancel()
+    timer_task = asyncio.create_task(_loop_timer(venc))
+
+
+async def registrar_buzz(player: int, tempo_us: int) -> bool:
+    """Registra quem apertou primeiro e (em modo pergunta) inicia o timer."""
+    if not buzzer["armado"] or player not in (1, 2):
+        return False
     buzzer["vencedor"] = player
     buzzer["tempo_us"] = tempo_us
     buzzer["armado"] = False
     buzzer["seq"] += 1
     buzzer["ts"] = datetime.now(timezone.utc).isoformat()
     await broadcast("buzzer", buzzer)
-    return {"ok": True, "vencedor": player}
+    if state["quiz"]["modo"] == "pergunta":
+        iniciar_timer(player)
+    return True
 
 
 async def _do_reset():
+    await parar_timer()
     buzzer["vencedor"] = 0
     buzzer["tempo_us"] = 0
     buzzer["armado"] = True
@@ -552,13 +609,7 @@ async def buzzer_ws(websocket: WebSocket):
 
             if tipo == "buzz":
                 player = data.get("player")
-                if buzzer["armado"] and player in (1, 2):
-                    buzzer["vencedor"] = player
-                    buzzer["tempo_us"] = data.get("tempo_us", 0)
-                    buzzer["armado"] = False
-                    buzzer["seq"] += 1
-                    buzzer["ts"] = datetime.now(timezone.utc).isoformat()
-                    await broadcast("buzzer", buzzer)
+                await registrar_buzz(player, data.get("tempo_us", 0))
 
             elif tipo == "reset":
                 await _do_reset()
@@ -748,6 +799,16 @@ async def quiz_teste(password: str = Form(...)):
     await _rearmar_buzzer_e_esp32()
     await _broadcast_quiz()
     return {"ok": True}
+
+
+@app.post("/quiz/timer")
+async def quiz_timer(password: str = Form(...), duracao: int = Form(...)):
+    """Define a duracao (s) de cada chance de resposta."""
+    _check_auth(password)
+    state["quiz"]["timer_duracao"] = max(1, min(120, duracao))
+    _salvar(state)
+    await _broadcast_quiz()
+    return {"ok": True, "timer_duracao": state["quiz"]["timer_duracao"]}
 
 
 @app.post("/quiz/reset-geral")

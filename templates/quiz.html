@@ -45,6 +45,14 @@
                 <button id="btn-rearmar" class="btn ghost">↺ Re-armar (mesma pergunta)</button>
                 <button id="btn-teste" class="btn ghost">🔧 Modo teste</button>
             </div>
+            <div class="row" style="gap: 10px; margin-top: 12px; align-items: flex-end;">
+                <label style="flex: 1;">
+                    <span style="font-size:12px;color:var(--fg-dim);">Tempo de resposta (s) — por chance</span>
+                    <input type="number" id="timer-duracao" min="1" max="120" value="10">
+                </label>
+                <button id="btn-timer" class="btn">Salvar tempo</button>
+            </div>
+            <p class="hint">Ao apertar, conta esse tempo. Zerou, conta de novo (vez do outro time). Zerou, para.</p>
         </section>
 
         <!-- ===== EQUIPES POR LADO ===== -->
@@ -183,6 +191,10 @@
             // botao revelar reflete o estado
             document.getElementById('btn-revelar').textContent =
                 quiz.resposta_revelada ? '🙈 Esconder resposta' : '👁 Revelar resposta';
+
+            // duracao do timer (so atualiza se o campo nao estiver focado)
+            const td = document.getElementById('timer-duracao');
+            if (quiz.timer_duracao && document.activeElement !== td) td.value = quiz.timer_duracao;
         }
 
         function aplicarEsp32(e) {
@@ -281,6 +293,11 @@
             if (!confirm('Apagar a memória de perguntas usadas e voltar ao início?')) return;
             const r = await post('/quiz/reset-geral', {});
             if (r) showMsg('Reset geral feito.', true);
+        });
+        document.getElementById('btn-timer').addEventListener('click', async () => {
+            const dur = document.getElementById('timer-duracao').value;
+            const r = await post('/quiz/timer', { duracao: dur });
+            if (r) showMsg('Tempo de resposta salvo: ' + r.timer_duracao + 's', true);
         });
 
         // ===== SSE =====

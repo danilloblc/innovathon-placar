@@ -199,6 +199,34 @@ header .subtitle { margin: 6px 0 0; color: var(--fg-dim); font-size: 14px; lette
     animation: buzzer-in 0.3s ease;
 }
 
+/* timer */
+.bz-timer {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+.bz-timer-vez {
+    font-size: clamp(18px, 2.5vw, 32px);
+    color: var(--fg-dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+}
+.bz-timer-num {
+    font-size: clamp(90px, 18vw, 240px);
+    font-weight: 900;
+    line-height: 1;
+    color: var(--accent);
+    text-shadow: 0 0 50px var(--accent-glow);
+    font-variant-numeric: tabular-nums;
+}
+.bz-timer.urgente .bz-timer-num {
+    color: var(--err);
+    text-shadow: 0 0 60px #ef5350aa;
+    animation: timer-urgente 0.5s ease-in-out infinite;
+}
+@keyframes timer-urgente { 0%,100% { transform: scale(1);} 50% { transform: scale(1.12);} }
+
 /* duelo de equipes */
 .bz-duelo {
     display: flex; align-items: center; justify-content: center;

@@ -26,6 +26,12 @@
             <div class="bz-resposta" id="bz-resposta" style="display:none;"></div>
         </div>
 
+        <!-- TIMER -->
+        <div id="bz-timer" class="bz-timer" style="display:none;">
+            <div class="bz-timer-vez" id="bz-timer-vez"></div>
+            <div class="bz-timer-num" id="bz-timer-num">10</div>
+        </div>
+
         <!-- DUELO DE EQUIPES (lado1 vs lado2) -->
         <div id="bz-duelo" class="bz-duelo" style="display:none;">
             <div class="bz-lado" id="bz-lado1">
@@ -56,7 +62,7 @@
             } catch {}
         }, 5000);
 
-        let equipes = [], quiz = null, buzzer = null;
+        let equipes = [], quiz = null, buzzer = null, timer = null;
 
         const elMain = document.getElementById('bz-main');
         const elIdle = document.getElementById('bz-idle');
@@ -87,9 +93,25 @@
         function render() {
             if (!quiz) return;
             const modo = quiz.modo || 'idle';
-            const venc = buzzer ? buzzer.vencedor : 0;  // 0,1,2
+            const vencBuzz = buzzer ? buzzer.vencedor : 0;  // quem apertou
+            // Durante o timer, o destaque segue a "vez" (ciclo 1 = quem apertou, ciclo 2 = o outro)
+            const venc = (timer && timer.ativo) ? timer.lado_vez : vencBuzz;
             const eq1 = equipePorId(quiz.lado1_equipe_id);
             const eq2 = equipePorId(quiz.lado2_equipe_id);
+
+            // Timer na tela
+            const elTimer = document.getElementById('bz-timer');
+            if (timer && timer.ativo) {
+                elTimer.style.display = 'flex';
+                document.getElementById('bz-timer-num').textContent = timer.restante;
+                const eqVez = timer.lado_vez === 1 ? eq1 : eq2;
+                const vezTxt = timer.ciclo === 1 ? 'Vez de' : 'Agora vez de';
+                document.getElementById('bz-timer-vez').textContent =
+                    eqVez ? `${vezTxt} ${eqVez.nome}` : '';
+                elTimer.className = 'bz-timer' + (timer.restante <= 3 ? ' urgente' : '');
+            } else {
+                elTimer.style.display = 'none';
+            }
 
             // subtitulo conforme modo
             elSub.textContent = modo === 'teste' ? 'MODO TESTE'
@@ -135,6 +157,7 @@
             if (s.equipes) equipes = s.equipes;
             if (s.quiz) quiz = s.quiz;
             if (s.buzzer) buzzer = s.buzzer;
+            if (s.timer) timer = s.timer;
             if (s.esp32) aplicarEsp32(s.esp32);
             render();
         }
@@ -158,6 +181,7 @@
             es.addEventListener('state', e => aplicarSnapshot(JSON.parse(e.data)));
             es.addEventListener('quiz', e => { quiz = JSON.parse(e.data); render(); });
             es.addEventListener('buzzer', e => { buzzer = JSON.parse(e.data); render(); });
+            es.addEventListener('timer', e => { timer = JSON.parse(e.data); render(); });
             es.addEventListener('esp32', e => aplicarEsp32(JSON.parse(e.data)));
         }
         connect();
